@@ -1,0 +1,12 @@
+[package]
+name = "zed_mql"
+version = "0.1.0"
+edition = "2021"
+description = "MQL4/MQL5 support for Zed with clangd"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+zed_extension_api = "0.7.0"

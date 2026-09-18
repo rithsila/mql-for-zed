@@ -1,0 +1,7 @@
+name = "MQL"
+grammar = "cpp"
+path_suffixes = ["mq4", "mq5", "mqh"]
+line_comments = ["// "]
+block_comment = ["/*", "*/"]
+tab_size = 3
+hard_tabs = false

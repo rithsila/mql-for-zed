@@ -1,0 +1,13 @@
+id = "mql"
+name = "MQL"
+description = "MQL4/MQL5 (MetaQuotes Language) support for MetaTrader 4/5 with clangd IntelliSense, code completion, and go-to-definition."
+version = "0.1.0"
+schema_version = 1
+authors = ["Community"]
+repository = "https://github.com/your-username/zed-mql"
+
+[lib]
+kind = "Rust"
+
+[language_servers.mql-clangd]
+languages = ["MQL"]
