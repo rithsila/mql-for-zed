@@ -1,7 +1,7 @@
 id = "mql"
 name = "MQL"
 description = "MQL5 (MetaQuotes Language) support for MetaTrader 5 with hover docs, code completion, and go-to-definition."
-version = "0.1.0"
+version = "0.1.1"
 schema_version = 1
 authors = ["Community"]
 repository = "https://github.com/rithsila/mql-for-zed"

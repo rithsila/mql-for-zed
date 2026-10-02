@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-02
+
+First release with the `mql-lsp` language server and Windows-over-SSH compile tasks (`v0.1.0` was tagged with the same code but lacked the Intel macOS server asset).
+
 ### Added
 
 - `scripts/mql-compile-helper.swift` — native arm64 Swift binary that initialises `NSApplication` before spawning Wine, providing the Cocoa event loop required by Wine's macOS display driver (`winemac.drv`) for headless MetaEditor compilation.
@@ -16,13 +20,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `scripts/parse-mql-log.py` — decodes MetaEditor logs (UTF-16/UTF-8) and prints clickable `path:line:col: error|warning: message` lines; maps Wine/VM paths to local POSIX paths; exits non-zero on errors.
 - `scripts/compile-mql-remote.sh` — syncs the workspace's `.mq5`/`.mqh` files to a Windows machine (tar over SSH, persistent connection), compiles with MetaEditor `/compile`, pulls back the log and `.ex5`, and maps errors (including ones in `MQL5/Include`) to local paths. Supports `--check` (MetaEditor `/s` syntax check only) and `.mqh` files via a `//###<path/to/Main.mq5>` first-line marker (relative to the workspace root). Settings come from env vars or `~/.config/zed-mql/env`. Verified against a real Windows 10 machine: ~1.7 s per compile.
 - `scripts/compile-mql.sh` — backend dispatcher driven by `MQL_BACKEND` (`remote` default; `local` not implemented yet).
-- `GUIDE.md` — full setup, SSH, configuration, troubleshooting and publishing guide.
 - `.zed/tasks.json` and `scripts/tasks.mql5-workspace.json` — "MQL: Compile" and "MQL: Syntax check" Zed tasks.
 
 - `mql-lsp` falls back to standard MT5 install locations (`$MQL5_PATH`, `~/.config/zed-mql/MQL5`, the macOS Wine prefix, `~/.wine`, `C:/Program Files/MetaTrader 5/MQL5`) when the workspace is not inside an `MQL5` folder.
 
 ### Fixed
 
+- Release workflow builds the Intel macOS `mql-lsp` by cross-compiling on an Apple-silicon runner (the `macos-13` runner never started).
 - Hover docs no longer show MetaQuotes' ASCII banner comments (`+-----+ | ... |`); they are cleaned into plain sentences.
 
 ### Changed
