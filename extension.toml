@@ -1,10 +1,14 @@
 id = "mql"
 name = "MQL"
 description = "MQL5 (MetaQuotes Language) support for MetaTrader 5 with hover docs, code completion, and go-to-definition."
-version = "0.1.1"
+version = "0.1.2"
 schema_version = 1
-authors = ["Community"]
+authors = ["rith sila <khmertools7@gmail.com>"]
 repository = "https://github.com/rithsila/mql-for-zed"
+
+[grammars.cpp]
+repository = "https://github.com/tree-sitter/tree-sitter-cpp"
+rev = "c009222808634c1014f82438d4883753516a2c24"
 
 [lib]
 kind = "Rust"

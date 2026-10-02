@@ -16,3 +16,7 @@ GUIDE.md
 *.iml
 *.ipr
 *.iws
+
+# Fetched/built by Zed
+/grammars/
+extension.wasm

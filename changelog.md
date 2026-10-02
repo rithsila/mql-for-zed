@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-02
+
 ### Added
 
 - `languages/mql/runnables.scm` — a gutter ▶ next to `OnInit`, `OnTick`, `OnStart` and `OnCalculate` that offers the compile and syntax-check tasks (tag `mql5`).
@@ -13,7 +15,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Registry preparation: the extension now declares its grammar in `extension.toml` (`[grammars.cpp]`, pinned to upstream tree-sitter-cpp) instead of relying on Zed's built-in one, and the vendored copy in `grammars/` is no longer committed. `extension.wasm` is no longer tracked. Author set in `extension.toml`.
 - Zed tasks are now labelled "MQL: Compile" and "MQL: Syntax check" (the "(Windows over SSH)" suffix and the redundant `MQL_BACKEND=remote` prefix are gone; `remote` is the dispatcher default). If you bound keys to the old labels, update `task_name`.
+
+### Removed
+
+- `implement_plan.md` and `scripts/mql-compile-helper.swift` (the abandoned local Wine approach).
 
 ## [0.1.1] - 2026-10-02
 

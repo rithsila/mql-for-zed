@@ -170,7 +170,7 @@ Zed task ──► scripts/compile-mql.sh ──► tar over ssh ──► MetaE
 - `src/lib.rs` is the Zed extension: it starts or downloads `mql-lsp`.
 - `lsp/` is the language server (Rust).
 - `scripts/` holds the compile scripts and the task template.
-- `grammars/mql` and `languages/mql` provide syntax highlighting and the outline.
+- `languages/mql` provides syntax highlighting and the outline, using the upstream `tree-sitter-cpp` grammar (pinned in `extension.toml`).
 
 ## Contributing
 
