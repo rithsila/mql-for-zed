@@ -122,6 +122,8 @@ MQL_VM_MQL5_ROOT=C:/Users/youruser/AppData/Roaming/MetaQuotes/Terminal/<hash>/MQ
 | `MQL_VM_INCLUDE` | none | Extra `/inc:` directory |
 | `MQL_LOCAL_MQL5_ROOT` | `~/.config/zed-mql/MQL5` | Local `MQL5` folder used for include navigation |
 | `MQL_WORKSPACE_ROOT` | git root of the file | Root folder that gets synced |
+| `MQL_DEPLOY` | `1` | After a successful compile, copy the `.ex5` into `MQL5/Experts/<workspace>/...` on the VM (needs `MQL_VM_MQL5_ROOT`) and in a local MetaTrader if found, so it shows up in the Strategy Tester. `0` disables |
+| `MQL_LOCAL_MT5_MQL5` | Wine install's `MQL5` dir | Local MetaTrader `MQL5` folder to deploy to |
 
 ### 4. Add the Zed tasks
 

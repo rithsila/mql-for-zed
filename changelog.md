@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `languages/mql/runnables.scm` — a gutter ▶ next to `OnInit`, `OnTick`, `OnStart` and `OnCalculate` that offers the compile and syntax-check tasks (tag `mql5`).
+- Deploy step in `scripts/compile-mql-remote.sh`: after a successful compile the `.ex5` is copied into `MQL5/Experts/<workspace>/...` on the VM (needs `MQL_VM_MQL5_ROOT`) and in a local MetaTrader if found, so it appears in the Strategy Tester. Controlled by `MQL_DEPLOY` (default `1`, `0` disables) and `MQL_LOCAL_MT5_MQL5`.
+
+### Changed
+
+- Zed tasks are now labelled "MQL: Compile" and "MQL: Syntax check" (the "(Windows over SSH)" suffix and the redundant `MQL_BACKEND=remote` prefix are gone; `remote` is the dispatcher default). If you bound keys to the old labels, update `task_name`.
+
 ## [0.1.1] - 2026-10-02
 
 First release with the `mql-lsp` language server and Windows-over-SSH compile tasks (`v0.1.0` was tagged with the same code but lacked the Intel macOS server asset).

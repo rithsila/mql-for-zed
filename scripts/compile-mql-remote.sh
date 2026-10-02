@@ -10,6 +10,8 @@
 #   MQL_VM_INCLUDE       optional /inc: directory
 #   MQL_LOCAL_MQL5_ROOT  local MQL5 dir used for include navigation
 #   MQL_WORKSPACE_ROOT   local workspace root (default: git toplevel of the file, else its directory)
+#   MQL_DEPLOY           1 (default) copies the compiled .ex5 into MQL5/Experts/<workspace>/... for backtesting; 0 disables
+#   MQL_LOCAL_MT5_MQL5   local MetaTrader MQL5 dir to deploy to too (default: the Wine install's MQL5 dir if it exists)
 set -uo pipefail
 
 CONFIG="${MQL_CONFIG:-$HOME/.config/zed-mql/env}"
@@ -28,6 +30,9 @@ VM_MQL5="${MQL_VM_MQL5_ROOT:-}"
 LOCAL_MQL5="${MQL_LOCAL_MQL5_ROOT:-}"
 [[ -z "$LOCAL_MQL5" && -d "$HOME/.config/zed-mql/MQL5" ]] && LOCAL_MQL5="$HOME/.config/zed-mql/MQL5"
 [[ -z "$LOCAL_MQL5" ]] && LOCAL_MQL5="$HOME/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/Program Files/MetaTrader 5/MQL5"
+
+LOCAL_MT5_MQL5="${MQL_LOCAL_MT5_MQL5:-$HOME/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/Program Files/MetaTrader 5/MQL5}"
+DEPLOY="${MQL_DEPLOY:-1}"
 
 die() { echo "error: $*" >&2; exit 2; }
 winpath() { printf '%s' "${1//\//\\}"; }
@@ -82,5 +87,23 @@ STATUS=$?
 # 4. Bring the .ex5 back on success
 if [[ $STATUS -eq 0 && "$MODE" == "compile" ]]; then
   scp -q "${SSH_OPTS[@]}" "$HOST:$VM_EX5" "$LOCAL_EX5" && echo "OK: $(basename "$LOCAL_EX5") updated"
+
+  # 5. Deploy to MetaTrader's Experts folder (VM and local) so the Strategy Tester can see it
+  if [[ "$DEPLOY" != "0" ]]; then
+    SUB="$(basename "$WS")/$(dirname "$REL")"; SUB="${SUB%/.}"
+    if [[ -n "$VM_MQL5" ]]; then
+      DST="$VM_MQL5/Experts/$SUB"
+      if ssh "${SSH_OPTS[@]}" "$HOST" "mkdir \"$(winpath "$DST")\" 2>nul & copy /y \"$(winpath "$VM_EX5")\" \"$(winpath "$DST")\\\" >nul" ; then
+        echo "Deployed to VM: $DST/$(basename "$VM_EX5")"
+      else
+        echo "warning: could not copy .ex5 into VM Experts (file in use by MT5?)" >&2
+      fi
+    fi
+    if [[ -d "$LOCAL_MT5_MQL5/Experts" ]]; then
+      DST="$LOCAL_MT5_MQL5/Experts/$SUB"
+      mkdir -p "$DST" && cp -f "$LOCAL_EX5" "$DST/" && echo "Deployed locally: $DST/$(basename "$LOCAL_EX5")" \
+        || echo "warning: could not copy .ex5 into local MT5 Experts" >&2
+    fi
+  fi
 fi
 exit $STATUS

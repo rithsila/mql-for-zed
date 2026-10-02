@@ -1,7 +1,7 @@
 [
   {
-    "label": "MQL: Compile (Windows over SSH)",
-    "command": "MQL_BACKEND=remote bash \"${MQL_SCRIPTS_DIR:-$HOME/Projects/zed-mql/scripts}/compile-mql.sh\" \"$ZED_FILE\"",
+    "label": "MQL: Compile",
+    "command": "bash \"${MQL_SCRIPTS_DIR:-$HOME/Projects/zed-mql/scripts}/compile-mql.sh\" \"$ZED_FILE\"",
     "tags": [
       "mql5"
     ],
@@ -9,8 +9,8 @@
     "reveal": "always"
   },
   {
-    "label": "MQL: Syntax check (Windows over SSH)",
-    "command": "MQL_BACKEND=remote bash \"${MQL_SCRIPTS_DIR:-$HOME/Projects/zed-mql/scripts}/compile-mql.sh\" --check \"$ZED_FILE\"",
+    "label": "MQL: Syntax check",
+    "command": "bash \"${MQL_SCRIPTS_DIR:-$HOME/Projects/zed-mql/scripts}/compile-mql.sh\" --check \"$ZED_FILE\"",
     "tags": [
       "mql5"
     ],
