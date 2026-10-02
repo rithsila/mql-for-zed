@@ -1,0 +1,29 @@
+name: Release mql-lsp
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { os: macos-14, target: aarch64-apple-darwin }
+          - { os: macos-13, target: x86_64-apple-darwin }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup target add ${{ matrix.target }}
+      - run: cargo build --release --target ${{ matrix.target }} --manifest-path lsp/Cargo.toml
+      - name: Package (unix)
+        if: runner.os != 'Windows'
+        run: tar -czf mql-lsp-${{ matrix.target }}.tar.gz -C lsp/target/${{ matrix.target }}/release mql-lsp
+      - name: Package (windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path lsp/target/${{ matrix.target }}/release/mql-lsp.exe -DestinationPath mql-lsp-${{ matrix.target }}.zip
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: mql-lsp-${{ matrix.target }}.*

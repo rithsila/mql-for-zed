@@ -1,6 +1,6 @@
 # zed-mql
 
-> MQL4/MQL5 language support for [Zed](https://zed.dev) with **clangd** IntelliSense.
+> MQL5 language support for [Zed](https://zed.dev).
 
 Brings MQL (MetaQuotes Language) — used for MetaTrader 4 and MetaTrader 5 Expert Advisors, indicators, and scripts — into Zed with first-class editor support.
 
@@ -8,141 +8,58 @@ Brings MQL (MetaQuotes Language) — used for MetaTrader 4 and MetaTrader 5 Expe
 
 | Feature | Status |
 |---|---|
-| Syntax highlighting (`.mq4`, `.mq5`, `.mqh`) | ✅ |
-| Code completion (via clangd) | ✅ |
-| Go to definition / Find references | ✅ |
-| Hover documentation | ✅ |
-| Diagnostics in the Problems panel | ✅ |
-| Document outline (functions, classes, enums) | ✅ |
-| Works with existing `compile_commands.json` | ✅ |
-| MQL4 + MQL5 mixed workspaces | ✅ |
-| macOS / Linux (Wine) | ✅ |
+| Syntax highlighting (`.mq5`, `.mqh`) | yes |
+| Hover docs: ~130 built-ins (hand-written) + everything declared in `MQL5/Include` and your workspace | yes |
+| Completion for built-ins, standard library, and workspace symbols | yes |
+| Go to definition (Include + workspace) | yes |
+| Compile / syntax check via Windows VM task | yes (see `scripts/`) |
+| Local Wine compile | not yet (experimental helper source in `scripts/`) |
+| Diagnostics in the Problems panel | not yet |
 
-## Requirements
+MQL5 only. MQL4 is out of scope.
 
-- **Zed** 0.140+ (extension API schema v1)
-- **clangd** ≥ 16 on your `PATH`
-  - macOS: `brew install llvm` then add `/opt/homebrew/opt/llvm/bin` to `PATH`
-  - Ubuntu/Debian: `sudo apt install clangd`
-  - Arch: `sudo pacman -S clang`
+Full setup and troubleshooting: see [GUIDE.md](GUIDE.md).
 
-## Installation (dev / local)
+## Install (dev)
 
-Until this extension is published to the Zed extension registry, install it from source:
+`cmd+shift+p` → **zed: install dev extension** → select this folder. Build the server once with `cargo build --release --manifest-path lsp/Cargo.toml` and put `lsp/target/release/mql-lsp` on your `PATH` until a release exists.
 
-```bash
-# Clone this repo or copy the zed-mql directory somewhere
-cd /path/to/zed-mql
+## Language server
 
-# Install as a dev extension in Zed:
-# Zed → Extensions → Install Dev Extension → select this folder
+The extension runs `mql-lsp` (source in `lsp/`). It is downloaded from GitHub releases automatically, or you can put your own build on `PATH`.
+It finds `MQL5/Include` by walking up from the workspace folder. Override in Zed settings:
+
+```json
+{ "lsp": { "mql-lsp": { "initialization_options": { "mql5Path": "/path/to/MQL5" } } } }
 ```
 
-Or via Zed's command palette:
-1. `cmd+shift+p` → **zed: install dev extension**
-2. Select the `zed-mql` directory
+## Compile tasks (Windows machine over SSH)
 
-## Setup
+MetaEditor is compiled on a Windows machine (VM or PC) reachable by SSH. The workspace's `.mq5`/`.mqh` files are synced there with `tar` over SSH, so relative `#include`s resolve, then MetaEditor runs `/compile` and errors are printed as clickable `file:line:col` lines. Typical run time is under 2 seconds.
 
-### Option A — Use an existing `compile_commands.json` (recommended)
+**1. Windows:** install OpenSSH Server (Settings > Optional features, or the `Win32-OpenSSH` zip), start the `sshd` service, and authorize your key (for administrator accounts the key goes in `C:\ProgramData\ssh\administrators_authorized_keys`).
 
-If you already have the **MQL Clangd** VS Code extension set up, it generates a
-`compile_commands.json` in your workspace root.  Zed's clangd instance will pick
-it up automatically — **no further configuration needed**.
-
-### Option B — Manual `compile_flags.txt`
-
-Create a `compile_flags.txt` in your workspace root:
+**2. Mac:** add a host alias to `~/.ssh/config`:
 
 ```
--xc++
--std=c++17
--D__MQL__
--D__MQL5__
--fms-extensions
--fms-compatibility
--ferror-limit=0
--Wno-everything
--I/path/to/MetaTrader5/MQL5/Include
--I.
+Host mqlvm
+    HostName 10.0.0.5
+    User youruser
+    IdentityFile ~/.ssh/mql_vm
+    IdentitiesOnly yes
 ```
 
-Adjust the `-I` path to your MetaTrader 5 installation's `Include` directory.
+**3. Config** in `~/.config/zed-mql/env`:
 
-### Option C — macOS with Wine (MetaTrader under Wine)
-
-The `Include` directory typically lives at:
-
-```
-~/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/Program Files/MetaTrader 5/MQL5/Include
+```sh
+MQL_VM_HOST=mqlvm
+MQL_VM_WORK=C:/Users/youruser/mql-work
+MQL_VM_MQL5_ROOT=C:/Users/youruser/AppData/Roaming/MetaQuotes/Terminal/<hash>/MQL5
 ```
 
-Add that to `compile_flags.txt` with an `-I` flag.
+Optional: `MQL_VM_METAEDITOR`, `MQL_VM_INCLUDE`, `MQL_LOCAL_MQL5_ROOT`, `MQL_WORKSPACE_ROOT`.
 
-## Suppressing clangd false-positives
-
-MQL is not standard C++. Create a `.clangd` file at the workspace root to suppress
-known false-positive diagnostics:
-
-```yaml
-CompileFlags:
-  Add:
-    - -Wno-everything
-
-Diagnostics:
-  Suppress:
-    - pp_file_not_found
-    - unknown_typename
-    - undeclared_var_use
-    - redefinition
-    - ovl_no_viable_function_in_call
-
-  ClangTidy:
-    Remove:
-      - modernize-*
-      - cppcoreguidelines-*
-      - readability-identifier-naming
-```
-
-> **Tip**: The MQL Clangd VS Code extension generates a comprehensive `.clangd`
-> with ~100 suppressed diagnostics. If you have that file already, reuse it.
-
-## How it works
-
-```mermaid
-flowchart LR
-    A[".mq5 / .mq4 / .mqh file"] --> B["Zed MQL extension"]
-    B --> C["tree-sitter-cpp\n(syntax highlighting)"]
-    B --> D["clangd LSP\n(IntelliSense)"]
-    D --> E["compile_commands.json\nor compile_flags.txt"]
-    E --> F["MQL5 Include dir"]
-```
-
-The extension:
-1. Registers `.mq4`, `.mq5`, and `.mqh` file types as the **MQL** language.
-2. Uses **tree-sitter-cpp** for fast, accurate syntax highlighting (MQL is a
-   C++ superset, so the grammar parses it cleanly).
-3. Launches a **clangd** instance for semantic features. If a
-   `compile_commands.json` exists in the workspace (e.g. generated by the MQL
-   Clangd VS Code extension), clangd uses it directly for maximum accuracy.
-   Otherwise, MQL-specific fallback flags are passed via initialization options.
-
-## Differences from VS Code MQL Clangd
-
-| Feature | zed-mql | VS Code MQL Clangd |
-|---|---|---|
-| Syntax highlighting | ✅ | ✅ |
-| IntelliSense (clangd) | ✅ | ✅ |
-| Go to definition | ✅ | ✅ |
-| Compile from editor | ❌ | ✅ |
-| Auto-generate compile_commands.json | ❌ | ✅ |
-| Live Runtime Log | ❌ | ✅ |
-| Trade Report Dashboard | ❌ | ✅ |
-| Backtest runner | ❌ | ✅ |
-| MQL Debugger | ❌ | ✅ |
-
-> For compile/debug/backtest workflows, use the VS Code MQL Clangd extension.
-> Use **zed-mql** when you want to edit MQL in Zed with full IntelliSense.
+**4. Zed tasks:** copy `scripts/tasks.mql5-workspace.json` to `.zed/tasks.json` in your workspace. Tasks: **MQL: Compile** (also copies the `.ex5` back next to the source) and **MQL: Syntax check**. For a `.mqh`, put `//###<path/to/Main.mq5>` (relative to the workspace root) on the first line to choose which program to compile.
 
 ## Contributing
 

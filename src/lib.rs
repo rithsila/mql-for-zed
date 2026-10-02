@@ -1,86 +1,124 @@
-use zed_extension_api::{self as zed, LanguageServerId, Result, Worktree};
+use std::fs;
+use zed_extension_api::{self as zed, settings::LspSettings, LanguageServerId, Result, Worktree};
 
-/// MQL Clangd extension for Zed.
-///
-/// Provides MQL4/MQL5 (MetaQuotes Language) support backed by clangd.
-/// Registers `.mq4`, `.mq5`, and `.mqh` files as the "MQL" language and
-/// launches a dedicated clangd instance with MQL-friendly fallback flags.
-struct MqlExtension;
+const REPO: &str = "rithsila/mql-for-zed";
+const BINARY: &str = "mql-lsp";
+
+/// MQL5 extension for Zed, backed by the bundled `mql-lsp` language server.
+struct MqlExtension {
+    cached_binary: Option<String>,
+}
+
+impl MqlExtension {
+    fn binary_path(&mut self, id: &LanguageServerId, worktree: &Worktree) -> Result<String> {
+        if let Some(path) = worktree.which(BINARY) {
+            return Ok(path);
+        }
+        if let Some(path) = self
+            .cached_binary
+            .as_ref()
+            .filter(|p| fs::metadata(p).is_ok())
+        {
+            return Ok(path.clone());
+        }
+
+        zed::set_language_server_installation_status(
+            id,
+            &zed::LanguageServerInstallationStatus::CheckingForUpdate,
+        );
+        let release = zed::latest_github_release(
+            REPO,
+            zed::GithubReleaseOptions {
+                require_assets: true,
+                pre_release: false,
+            },
+        )?;
+
+        let (os, arch) = zed::current_platform();
+        let os_name = match os {
+            zed::Os::Mac => "apple-darwin",
+            zed::Os::Linux => "unknown-linux-gnu",
+            zed::Os::Windows => "pc-windows-msvc",
+        };
+        let arch_name = match arch {
+            zed::Architecture::Aarch64 => "aarch64",
+            zed::Architecture::X8664 => "x86_64",
+            zed::Architecture::X86 => return Err("32-bit x86 is not supported".into()),
+        };
+        let (ext, file_type) = match os {
+            zed::Os::Windows => ("zip", zed::DownloadedFileType::Zip),
+            _ => ("tar.gz", zed::DownloadedFileType::GzipTar),
+        };
+        let asset_name = format!("{BINARY}-{arch_name}-{os_name}.{ext}");
+        let asset = release
+            .assets
+            .iter()
+            .find(|a| a.name == asset_name)
+            .ok_or_else(|| format!("no release asset named {asset_name}"))?;
+
+        let dir = format!("{BINARY}-{}", release.version);
+        let exe = if matches!(os, zed::Os::Windows) {
+            format!("{BINARY}.exe")
+        } else {
+            BINARY.to_string()
+        };
+        let path = format!("{dir}/{exe}");
+
+        if fs::metadata(&path).is_err() {
+            zed::set_language_server_installation_status(
+                id,
+                &zed::LanguageServerInstallationStatus::Downloading,
+            );
+            zed::download_file(&asset.download_url, &dir, file_type)
+                .map_err(|e| format!("failed to download {asset_name}: {e}"))?;
+            zed::make_file_executable(&path)?;
+            if let Ok(entries) = fs::read_dir(".") {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if name.starts_with(&format!("{BINARY}-")) && name != dir {
+                        let _ = fs::remove_dir_all(entry.path());
+                    }
+                }
+            }
+        }
+
+        zed::set_language_server_installation_status(
+            id,
+            &zed::LanguageServerInstallationStatus::None,
+        );
+        self.cached_binary = Some(path.clone());
+        Ok(path)
+    }
+}
 
 impl zed::Extension for MqlExtension {
     fn new() -> Self {
-        Self
+        Self {
+            cached_binary: None,
+        }
     }
 
-    /// Locate `clangd` on PATH and build the command to launch it.
     fn language_server_command(
         &mut self,
-        _language_server_id: &LanguageServerId,
+        id: &LanguageServerId,
         worktree: &Worktree,
     ) -> Result<zed::Command> {
-        // Try the exact binary first, then fall back to versioned names.
-        let clangd = worktree
-            .which("clangd")
-            .or_else(|| worktree.which("clangd-18"))
-            .or_else(|| worktree.which("clangd-17"))
-            .or_else(|| worktree.which("clangd-16"))
-            .ok_or_else(|| {
-                concat!(
-                    "clangd not found in PATH.\n",
-                    "Install it via:\n",
-                    "  macOS:  brew install llvm  (then add /opt/homebrew/opt/llvm/bin to PATH)\n",
-                    "  Ubuntu: sudo apt install clangd\n",
-                    "  Arch:   sudo pacman -S clang"
-                )
-                .to_string()
-            })?;
-
         Ok(zed::Command {
-            command: clangd,
-            args: vec![
-                // Index the project in the background for faster completions.
-                "--background-index".to_string(),
-                // Don't auto-insert includes on completion — MetaEditor manages includes.
-                "--header-insertion=never".to_string(),
-                // Offer completions from all scopes, not just the current one.
-                "--all-scopes-completion=true".to_string(),
-                // Show full type signatures in completion details.
-                "--completion-style=detailed".to_string(),
-                // Suppress clangd's own log noise; real errors still show up.
-                "--log=error".to_string(),
-            ],
+            command: self.binary_path(id, worktree)?,
+            args: vec![],
             env: Default::default(),
         })
     }
 
-    /// Pass MQL-specific fallback compilation flags to clangd.
-    ///
-    /// These are used when no `compile_commands.json` or `compile_flags.txt`
-    /// is present in the workspace root.  When those files exist (as generated
-    /// by the MQL Clangd VS Code extension), clangd reads them automatically
-    /// and these flags are ignored.
+    /// Settings: `{"lsp": {"mql-lsp": {"initialization_options": {"mql5Path": "/path/to/MQL5"}}}}`
     fn language_server_initialization_options(
         &mut self,
-        _server_id: &LanguageServerId,
-        _worktree: &Worktree,
+        id: &LanguageServerId,
+        worktree: &Worktree,
     ) -> Result<Option<zed::serde_json::Value>> {
-        Ok(Some(zed::serde_json::json!({
-            "fallbackFlags": [
-                // Treat MQL files as C++ source.
-                "-xc++",
-                "-std=c++17",
-                // Core MQL preprocessor defines.
-                "-D__MQL__",
-                "-D__MQL5__",
-                // MQL uses MS-style extensions (__int64, __cdecl, etc.).
-                "-fms-extensions",
-                "-fms-compatibility",
-                // Don't cap error output — MQL headers trigger many cascading errors.
-                "-ferror-limit=0",
-                // Suppress all clangd warnings; MetaEditor is the authoritative compiler.
-                "-Wno-everything"
-            ]
-        })))
+        Ok(LspSettings::for_worktree(id.as_ref(), worktree)
+            .ok()
+            .and_then(|s| s.initialization_options))
     }
 }
 
