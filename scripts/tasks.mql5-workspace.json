@@ -16,5 +16,14 @@
     ],
     "allow_concurrent_runs": false,
     "reveal": "always"
+  },
+  {
+    "label": "MQL: Backtest",
+    "command": "bash \"${MQL_SCRIPTS_DIR:-$HOME/Projects/zed-mql/scripts}/tester-mql-remote.sh\" \"$ZED_FILE\"",
+    "tags": [
+      "mql5"
+    ],
+    "allow_concurrent_runs": false,
+    "reveal": "always"
   }
 ]

@@ -14,6 +14,7 @@ MQL5 only. MQL4 is out of scope.
 | Hover docs for ~130 common built-ins (`OrderSend`, `iMA`, `CopyRates`, ...) | yes |
 | Hover, completion and go-to-definition for the standard library (`CTrade`, `CArrayObj`, ...) and your own workspace | yes |
 | Compile and syntax check from Zed tasks, with clickable `file:line:col` errors | yes, via a Windows machine over SSH (see below) |
+| Strategy Tester backtest from a Zed task (compile, deploy, run on the Windows machine, summary in the terminal) | yes, see "Backtest" below |
 | Compile on macOS locally (Wine) | no (MetaEditor hangs when run headless under Wine) |
 | Diagnostics in the Problems panel | not yet |
 
@@ -133,6 +134,7 @@ Run a task with `cmd+shift+p`, **task: spawn**:
 
 - **MQL: Compile** compiles and copies the resulting `.ex5` next to the source.
 - **MQL: Syntax check** runs MetaEditor's `/s` check only.
+- **MQL: Backtest** compiles, deploys and runs the EA in the Strategy Tester on the Windows machine, then prints a summary. See [Backtest](#backtest).
 
 To compile a header, put this on its first line, with a path relative to the workspace root:
 
@@ -145,6 +147,43 @@ To compile a header, put this on its first line, with a path relative to the wor
 - Tested against Windows 10 with an RDP session logged in. Behavior with nobody logged in is untested.
 - Files you delete locally stay in the synced folder on Windows. Remove that folder if it gets stale.
 - Local compile through Wine does not work: headless MetaEditor spins at 100% CPU and never writes a log. Apple is also ending Rosetta, which MetaQuotes' Wine build depends on.
+
+## Backtest
+
+**MQL: Backtest** (`scripts/tester-mql-remote.sh`) compiles and deploys the EA, writes a tester `.ini`, runs `terminal64.exe /config:<ini>` on the Windows machine with `ShutdownTerminal=1`, waits for it to exit and prints a summary taken from the tester log: initial deposit, final balance, net result, number of deals, `OnTester` value, test time and data size. It also saves the run's tester log to `<workspace>/.mql-tester/<EA>.tester.log` (add that folder to your `.gitignore`).
+
+Requirements and behaviour, as observed on Windows 10 with MetaTrader 5 build 6230:
+
+- The tester needs an account to log in with. By default the script reads `Login` and `Server` from the terminal's `config\common.ini` (the last account you logged in with). The terminal must have been logged in once, with the password saved. The tester only reads quotes and trades nothing live, but it does connect to that account.
+- The symbol and deposit currency must match that account's server (for example a cent account has `XAUUSDc` and `USC`). A wrong symbol makes the run fail with `tester symbol does not exist`, which the script reports.
+- MetaTrader allows one instance per data folder. If a GUI terminal of the same install is running, the script closes it first through a scheduled task in your RDP session (`MQL_BT_CLOSE_GUI=0` aborts instead). It does not reopen it afterwards.
+- MetaTrader must not have a LiveUpdate pending. A pending update makes the terminal exit immediately, with a UAC prompt that needs a click on the Windows desktop, and no test runs.
+- The HTML report is not produced by this setup. The script asks for one (`Report=`) and copies it if it appears, but in testing none was written, so there is no drawdown or profit factor. Open the tester log or run the same settings in the MetaTrader GUI for those.
+- Only the remote backend exists. A local Wine run is untested.
+
+Defaults come from env vars, `~/.config/zed-mql/env`, then an optional `<workspace>/.zed/mql-tester.env` (later wins). Put per-project values in the last one:
+
+```sh
+MQL_BT_SYMBOL=XAUUSDc
+MQL_BT_PERIOD=M5
+MQL_BT_FROM=2026.01.01
+MQL_BT_TO=2026.06.30
+```
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MQL_VM_TERMINAL` | `C:/Program Files/MetaTrader 5/terminal64.exe` | Terminal to run |
+| `MQL_BT_SYMBOL` | `XAUUSDc` | Tester symbol, as the broker names it |
+| `MQL_BT_PERIOD` | `M5` | Timeframe |
+| `MQL_BT_MODEL` | `1` | `0` every tick, `1` 1-minute OHLC, `2` open prices, `4` real ticks |
+| `MQL_BT_FROM`, `MQL_BT_TO` | last 30 days | `YYYY.MM.DD` |
+| `MQL_BT_DEPOSIT` | `10000` | Initial deposit |
+| `MQL_BT_CURRENCY` | `USC` | Must match the account currency |
+| `MQL_BT_LEVERAGE` | `1:500` | Leverage |
+| `MQL_BT_LOGIN`, `MQL_BT_SERVER` | from the terminal's `common.ini` | Account the tester logs in with |
+| `MQL_BT_SET` | `<EA>.set` next to the source, if it exists | Inputs file, uploaded to `MQL5/Profiles/Tester` |
+| `MQL_BT_TIMEOUT` | `1800` | Seconds to wait before giving up (the run keeps going on the VM) |
+| `MQL_BT_CLOSE_GUI` | `1` | Close a running GUI terminal of the same install first |
 
 ## Troubleshooting
 

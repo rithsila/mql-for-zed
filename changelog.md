@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `MQL: Backtest` task (`scripts/tester-mql-remote.sh`, `scripts/parse-tester-log.py`): compiles and deploys the EA, writes a tester `.ini`, runs `terminal64.exe /config:` with `ShutdownTerminal=1` on the Windows machine, waits, and prints a summary (deposit, final balance, net, deals, `OnTester`, test time) parsed from the tester log. Configured with `MQL_BT_*` variables, `~/.config/zed-mql/env` and an optional `<workspace>/.zed/mql-tester.env`; `<EA>.set` next to the source is used as the inputs file. Closes a running GUI terminal of the same install first (`MQL_BT_CLOSE_GUI=0` to abort instead).
+- Added to `scripts/tasks.mql5-workspace.json`.
+
+### Known limits
+
+- Checked end to end with FlexUltimateGRH on one Windows 10 VM (build 6230) only. No HTML report was produced there, so there is no drawdown or profit factor. A pending MetaTrader LiveUpdate stops the run until it is approved on the Windows desktop. Local Wine backend not implemented or tested.
+
 ## [0.1.2] - 2026-10-02
 
 ### Added
