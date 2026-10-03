@@ -11,7 +11,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `MQL: Backtest` task (`scripts/tester-mql-remote.sh`, `scripts/parse-tester-log.py`): compiles and deploys the EA, writes a tester `.ini`, runs `terminal64.exe /config:` with `ShutdownTerminal=1` on the Windows machine, waits, and prints a summary (deposit, final balance, net, deals, `OnTester`, test time) parsed from the tester log. Configured with `MQL_BT_*` variables, `~/.config/zed-mql/env` and an optional `<workspace>/.zed/mql-tester.env`; `<EA>.set` next to the source is used as the inputs file. Closes a running GUI terminal of the same install first (`MQL_BT_CLOSE_GUI=0` to abort instead).
 - Added to `scripts/tasks.mql5-workspace.json`.
 
+- `mql/ZedMqlStats.mqh`: `ZedMqlPrintStats()` for an EA's `OnTester` prints trades, profit factor, equity drawdown, recovery factor and Sharpe from `TesterStatistics()`; the backtest summary shows them. Uploaded to the VM `MQL5/Include` on each compile.
+
+- `<EA>.report.html` next to the source: statistics, win rate, average/largest win and loss, and a balance curve, built from a deal list that `ZedMqlPrintStats()` writes to `Common/Files` (the terminal's own HTML report was not produced on the test VM).
+
+### Changed
+
+- Backtest: if `<EA>.set` is missing it is generated from the `.mq5` input defaults (`scripts/gen-set.py`) and always passed to the tester, because otherwise the tester silently uses the inputs last saved on the VM. `MQL_BT_GENSET=0` disables this and prints a warning instead. The set is uploaded as `zedmql_<EA>.set` so VM's own saved profile is not overwritten.
+- Backtest results (`<EA>.summary.txt`, `<EA>.tester.log`, `<EA>.htm` if any) are now saved next to the `.mq5` instead of `<workspace>/.mql-tester/`.
+- Compile, syntax check and backtest resolve a non-`.mq5` active file (`_tester.ini`, `.set`, ...) to the `.mq5` in the same folder (`scripts/resolve-mql.sh`).
+
 ### Known limits
+
+- `ZedMqlStats.mqh`, `.set` generation and the HTML report were run against one VM and one EA (a scratch copy of FlexUltimateGRH) only; numbers were not compared with the MetaTrader GUI.
 
 - Checked end to end with FlexUltimateGRH on one Windows 10 VM (build 6230) only. No HTML report was produced there, so there is no drawdown or profit factor. A pending MetaTrader LiveUpdate stops the run until it is approved on the Windows desktop. Local Wine backend not implemented or tested.
 

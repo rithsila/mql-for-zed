@@ -130,7 +130,7 @@ MQL_VM_MQL5_ROOT=C:/Users/youruser/AppData/Roaming/MetaQuotes/Terminal/<hash>/MQ
 
 Copy [`scripts/tasks.mql5-workspace.json`](scripts/tasks.mql5-workspace.json) to `.zed/tasks.json` in your MQL project. If you did not clone this repository to `~/Projects/zed-mql`, set `MQL_SCRIPTS_DIR` to its `scripts` folder.
 
-Run a task with `cmd+shift+p`, **task: spawn**:
+Run a task with `cmd+shift+p`, **task: spawn**. The tasks act on the active file. If it is not an `.mq5` (for example `_tester.ini`, a `.set` or a log), the single `.mq5` in the same folder is used, or the one named like the folder; with several candidates the task stops and asks you to open the EA:
 
 - **MQL: Compile** compiles and copies the resulting `.ex5` next to the source.
 - **MQL: Syntax check** runs MetaEditor's `/s` check only.
@@ -150,7 +150,7 @@ To compile a header, put this on its first line, with a path relative to the wor
 
 ## Backtest
 
-**MQL: Backtest** (`scripts/tester-mql-remote.sh`) compiles and deploys the EA, writes a tester `.ini`, runs `terminal64.exe /config:<ini>` on the Windows machine with `ShutdownTerminal=1`, waits for it to exit and prints a summary taken from the tester log: initial deposit, final balance, net result, number of deals, `OnTester` value, test time and data size. It also saves the run's tester log to `<workspace>/.mql-tester/<EA>.tester.log` (add that folder to your `.gitignore`).
+**MQL: Backtest** (`scripts/tester-mql-remote.sh`) compiles and deploys the EA, writes a tester `.ini`, runs `terminal64.exe /config:<ini>` on the Windows machine with `ShutdownTerminal=1`, waits for it to exit and prints a summary taken from the tester log: initial deposit, final balance, net result, number of deals, `OnTester` value, test time and data size. After each run it saves the results next to the `.mq5`: `<EA>.summary.txt` (the summary above), `<EA>.tester.log` (this run's tester log, can be several MB) and `<EA>.htm` if the terminal wrote a report (it did not in testing), and `<EA>.report.html` when the EA uses the helper below. They are overwritten on the next run; consider adding `*.summary.txt` and `*.tester.log` to your `.gitignore`.
 
 Requirements and behaviour, as observed on Windows 10 with MetaTrader 5 build 6230:
 
@@ -158,8 +158,17 @@ Requirements and behaviour, as observed on Windows 10 with MetaTrader 5 build 62
 - The symbol and deposit currency must match that account's server (for example a cent account has `XAUUSDc` and `USC`). A wrong symbol makes the run fail with `tester symbol does not exist`, which the script reports.
 - MetaTrader allows one instance per data folder. If a GUI terminal of the same install is running, the script closes it first through a scheduled task in your RDP session (`MQL_BT_CLOSE_GUI=0` aborts instead). It does not reopen it afterwards.
 - MetaTrader must not have a LiveUpdate pending. A pending update makes the terminal exit immediately, with a UAC prompt that needs a click on the Windows desktop, and no test runs.
-- The HTML report is not produced by this setup. The script asks for one (`Report=`) and copies it if it appears, but in testing none was written, so there is no drawdown or profit factor. Open the tester log or run the same settings in the MetaTrader GUI for those.
+- The HTML report is not produced by this setup (the script asks for one and copies it if it appears, but none was written in testing). For drawdown, profit factor and similar, add the helper to your EA. [`mql/ZedMqlStats.mqh`](mql/ZedMqlStats.mqh) is uploaded to the VM's `MQL5/Include` on every compile; then in the EA:
+
+  ```mql5
+  #include <ZedMqlStats.mqh>
+  double OnTester() { ZedMqlPrintStats(); /* your existing criterion */ }
+  ```
+
+  It prints one `ZEDMQL_STATS` line from `TesterStatistics()` inside the tester only, and the summary shows trades, profit factor, equity drawdown, recovery factor and Sharpe. It also writes the deal list to `Common/Files/zedmql_<EA>_deals.csv` on the VM; the script fetches it and writes `<EA>.report.html` next to the `.mq5` (statistics, win rate, average and largest win/loss, and a balance curve drawn from closed-deal results). The curve is balance, not equity: floating profit and loss is not sampled, so use the tester's equity drawdown figure for risk. Without the helper the summary says the figures are unavailable and no report is written.
 - Only the remote backend exists. A local Wine run is untested.
+
+**Inputs.** Without an explicit inputs file, the tester reuses the inputs last saved for that EA on the VM (`MQL5/Profiles/Tester/<EA>.set`, also rewritten by GUI runs), not the defaults in your source. In testing this gave a +153% result for FlexUltimateGRH where the source defaults gave -4%. So if `<EA>.set` is missing, the script writes one next to the `.mq5` from the literal `input` defaults (`scripts/gen-set.py`). Inputs whose default is not a plain literal (enums, expressions, macros) are left out, so the EA's compiled default applies; the file lists them in a comment. Edit the file to change inputs; delete its first line (`; generated by zed-mql ...`) to stop it being regenerated when the `.mq5` changes.
 
 Defaults come from env vars, `~/.config/zed-mql/env`, then an optional `<workspace>/.zed/mql-tester.env` (later wins). Put per-project values in the last one:
 
@@ -181,7 +190,8 @@ MQL_BT_TO=2026.06.30
 | `MQL_BT_CURRENCY` | `USC` | Must match the account currency |
 | `MQL_BT_LEVERAGE` | `1:500` | Leverage |
 | `MQL_BT_LOGIN`, `MQL_BT_SERVER` | from the terminal's `common.ini` | Account the tester logs in with |
-| `MQL_BT_SET` | `<EA>.set` next to the source, if it exists | Inputs file, uploaded to `MQL5/Profiles/Tester` |
+| `MQL_BT_SET` | `<EA>.set` next to the source | Inputs file, uploaded to `MQL5/Profiles/Tester` and passed to the tester. If `<EA>.set` is missing it is generated from the `.mq5` (see below) |
+| `MQL_BT_GENSET` | `1` | `0` turns generation off; the run then warns that the tester will use the inputs last saved on the VM |
 | `MQL_BT_TIMEOUT` | `1800` | Seconds to wait before giving up (the run keeps going on the VM) |
 | `MQL_BT_CLOSE_GUI` | `1` | Close a running GUI terminal of the same install first |
 

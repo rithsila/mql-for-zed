@@ -70,6 +70,12 @@ if ! (cd "$WS" && find . \( -name .git -o -name node_modules -o -name .venv -o -
   die "failed to sync sources to $HOST (is ssh working? try: ssh $HOST)"
 fi
 
+# 1b. Helper include for the backtest summary (harmless if unused)
+if [[ -n "$VM_MQL5" && -f "$SCRIPT_DIR/../mql/ZedMqlStats.mqh" ]]; then
+  scp -q "${SSH_OPTS[@]}" "$SCRIPT_DIR/../mql/ZedMqlStats.mqh" "$HOST:$VM_MQL5/Include/ZedMqlStats.mqh" 2>/dev/null \
+    || echo "note: could not copy ZedMqlStats.mqh to the VM Include folder" >&2
+fi
+
 # 2. Compile (start /wait: MetaEditor is a GUI program and cmd would not wait otherwise)
 FLAGS="/compile:\"$(winpath "$VM_SRC")\" /log:\"$(winpath "$VM_LOG")\""
 [[ "$MODE" == "check" ]] && FLAGS="$FLAGS /s"
