@@ -17,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Backtest: if `<EA>.set` is missing it is generated from the `.mq5` input defaults (`scripts/gen-set.py`) and always passed to the tester, because otherwise the tester silently uses the inputs last saved on the VM. `MQL_BT_GENSET=0` disables this and prints a warning instead. The set is uploaded as `zedmql_<EA>.set` so VM's own saved profile is not overwritten.
+- Backtest: if `<EA>.set` is missing it is generated from the `.mq5` input defaults (`scripts/gen-set.py`; enum defaults are resolved to integers) and always passed to the tester, because otherwise the tester silently uses the inputs last saved on the VM. `MQL_BT_GENSET=0` disables this and prints a warning instead. The set is uploaded as `zedmql_<EA>.set` so VM's own saved profile is not overwritten.
 - Backtest results (`<EA>.summary.txt`, `<EA>.tester.log`, `<EA>.htm` if any) are now saved next to the `.mq5` instead of `<workspace>/.mql-tester/`.
 - Compile, syntax check and backtest resolve a non-`.mq5` active file (`_tester.ini`, `.set`, ...) to the `.mq5` in the same folder (`scripts/resolve-mql.sh`).
 
