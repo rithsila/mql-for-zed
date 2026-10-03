@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Opt-in remote syntax checks on save in `mql-lsp`, with background execution, debouncing, stale-result rejection, and compiler diagnostics for mapped workspace and include files in Problems. Checks never deploy an EA; Windows integration and MetaEditor column units remain unverified.
+- Versioned JSON compile results (`--check --json --job-id ID --snapshot ID`) with distinct success, compiler-error, SSH, launch and log-failure states; local fixture/mock-runner tests. Clickable task output remains available.
+
 - `MQL: Backtest` task (`scripts/tester-mql-remote.sh`, `scripts/parse-tester-log.py`): compiles and deploys the EA, writes a tester `.ini`, runs `terminal64.exe /config:` with `ShutdownTerminal=1` on the Windows machine, waits, and prints a summary (deposit, final balance, net, deals, `OnTester`, test time) parsed from the tester log. Configured with `MQL_BT_*` variables, `~/.config/zed-mql/env` and an optional `<workspace>/.zed/mql-tester.env`; `<EA>.set` next to the source is used as the inputs file. Closes a running GUI terminal of the same install first (`MQL_BT_CLOSE_GUI=0` to abort instead).
 - Added to `scripts/tasks.mql5-workspace.json`.
 

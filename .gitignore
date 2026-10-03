@@ -13,6 +13,7 @@ Thumbs.db
 *~
 lsp/target/
 GUIDE.md
+/plan.md
 *.iml
 *.ipr
 *.iws
