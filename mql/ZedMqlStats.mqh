@@ -33,7 +33,7 @@ void ZedMqlWriteDeals()
       PrintFormat("ZEDMQL_DEALS error=%d",GetLastError());
       return;
      }
-   FileWriteString(h,"time,ticket,type,entry,symbol,volume,price,profit,swap,commission,fee\n");
+   FileWriteString(h,"time,ticket,position_id,type,entry,symbol,volume,price,profit,swap,commission,fee\n");
    int rows=0, total=HistoryDealsTotal();
    for(int i=0; i<total; i++)
      {
@@ -42,8 +42,9 @@ void ZedMqlWriteDeals()
          continue;
       string sym=HistoryDealGetString(t,DEAL_SYMBOL);
       StringReplace(sym,",","");
-      FileWriteString(h,StringFormat("%I64d,%I64u,%d,%d,%s,%.3f,%.5f,%.2f,%.2f,%.2f,%.2f\n",
+      FileWriteString(h,StringFormat("%I64d,%I64u,%I64u,%d,%d,%s,%.3f,%.5f,%.2f,%.2f,%.2f,%.2f\n",
                       (long)HistoryDealGetInteger(t,DEAL_TIME),t,
+                      (long)HistoryDealGetInteger(t,DEAL_POSITION_ID),
                       (int)HistoryDealGetInteger(t,DEAL_TYPE),(int)HistoryDealGetInteger(t,DEAL_ENTRY),sym,
                       HistoryDealGetDouble(t,DEAL_VOLUME),HistoryDealGetDouble(t,DEAL_PRICE),
                       HistoryDealGetDouble(t,DEAL_PROFIT),HistoryDealGetDouble(t,DEAL_SWAP),

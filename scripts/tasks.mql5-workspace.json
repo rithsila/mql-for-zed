@@ -25,5 +25,19 @@
     ],
     "allow_concurrent_runs": false,
     "reveal": "always"
+  },
+  {
+    "label": "MQL: Optimize",
+    "command": "bash \"${MQL_SCRIPTS_DIR:-$HOME/Projects/zed-mql/scripts}/optimize-mql-remote.sh\" \"$ZED_FILE\"",
+    "tags": [
+      "mql5"
+    ],
+    "env": {
+      "MQL_OPT_CRITERION": "0",
+      "MQL_OPT_MODE": "1",
+      "MQL_OPT_MAX_PASSES": "100000"
+    },
+    "allow_concurrent_runs": false,
+    "reveal": "always"
   }
 ]

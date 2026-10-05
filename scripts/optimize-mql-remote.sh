@@ -13,7 +13,10 @@
 #   MQL_BT_LEVERAGE      e.g. 1:500                     (default: 1:500)
 #   MQL_BT_LOGIN/SERVER  account the tester logs in with (default: read from the VM terminal's config/common.ini)
 #   MQL_BT_SET           .set file for EA inputs        (default: <EA>.set next to the .mq5, if present)
-#   MQL_BT_TIMEOUT       seconds to wait for the run    (default: 1800)
+#   MQL_OPT_CRITERION    0 (Balance), 1 (Profit Factor), 2 (Expected Payoff), 3 (Drawdown min), 4 (Recovery Factor), 5 (Sharpe), 6 (Custom) (default: 0)
+#   MQL_OPT_MAX_PASSES   Hard limit on total passes to prevent infinite exhaustive search (default: 100000)
+#   MQL_OPT_MODE         1 (Slow complete), 2 (Fast genetic) (default: 1)
+#   MQL_BT_TIMEOUT       seconds to wait for the run    (default: 7200)
 #   MQL_BT_CLOSE_GUI     1 (default) closes a running GUI terminal of the same install first (needed: one instance per data dir); 0 aborts instead
 set -uo pipefail
 
@@ -56,7 +59,11 @@ SYMBOL="${MQL_BT_SYMBOL:-XAUUSDc}"; PERIOD="${MQL_BT_PERIOD:-M5}"; MODEL="${MQL_
 FROM="${MQL_BT_FROM:-$(date -v-30d +%Y.%m.%d 2>/dev/null || date -d '-30 days' +%Y.%m.%d)}"
 TO="${MQL_BT_TO:-$(date +%Y.%m.%d)}"
 DEPOSIT="${MQL_BT_DEPOSIT:-10000}"; CURRENCY="${MQL_BT_CURRENCY:-USC}"; LEVERAGE="${MQL_BT_LEVERAGE:-1:500}"
-TIMEOUT="${MQL_BT_TIMEOUT:-1800}"
+TIMEOUT="${MQL_BT_TIMEOUT:-7200}"
+
+OPT_CRITERION="${MQL_OPT_CRITERION:-0}"
+OPT_MODE="${MQL_OPT_MODE:-1}"
+OPT_MAX_PASSES="${MQL_OPT_MAX_PASSES:-100000}"
 
 SSH_OPTS=(-o ControlMaster=auto -o ControlPath="$HOME/.ssh/mql-%C" -o ControlPersist=10m -o BatchMode=yes -o ConnectTimeout=8)
 vm() { ssh "${SSH_OPTS[@]}" "$HOST" "$@"; }
@@ -108,12 +115,17 @@ if [[ ! -f "$SET" || ( -z "${MQL_BT_SET:-}" && "$SRC" -nt "$SET" && "$(head -c $
   if [[ "${MQL_BT_GENSET:-1}" == "1" && -z "${MQL_BT_SET:-}" ]]; then
     echo "note: $(basename "$SET") is missing or stale; generating it from the input defaults in $(basename "$SRC")"
     python3 "$SCRIPT_DIR/gen-set.py" "$SRC" "$SET" || die "could not generate $SET"
-    echo "      edit it to change inputs (delete its first line to stop it being regenerated)"
+    echo "      edit it to change inputs and add optimization ranges."
   else
-    echo "WARNING: no .set file; the tester will use the inputs LAST SAVED ON THE VM for $NAME (MQL5/Profiles/Tester), not the EA defaults. Results may not match your source." >&2
+    echo "WARNING: no .set file; the tester will use the inputs LAST SAVED ON THE VM for $NAME (MQL5/Profiles/Tester)." >&2
+    die "Optimization requires an explicit .set file to validate search space size."
   fi
 fi
 if [[ -f "$SET" ]]; then
+  # Limit check
+  echo "== Validating optimization limits in $(basename "$SET") ..."
+  python3 "$SCRIPT_DIR/check-opt-limits.py" "$SET" "$OPT_MAX_PASSES" || die "Optimization limits exceeded or invalid .set file."
+
   UPLOADED="zedmql_$NAME.set"
   vm "mkdir \"$(winpath "$VM_MQL5")\\Profiles\\Tester\" 2>nul & exit 0"
   scp -q "${SSH_OPTS[@]}" "$SET" "$HOST:$VM_MQL5/Profiles/Tester/$UPLOADED" || die "could not upload $SET"
@@ -127,7 +139,8 @@ INI="$TMP/zedmql-$NAME.ini"
 {
   echo "[Common]"; echo "Login=$LOGIN"; echo "Server=$SERVER"
   echo "[Tester]"; echo "Expert=$EXPERT"; [[ -n "$SETLINE" ]] && echo "$SETLINE"
-  echo "Symbol=$SYMBOL"; echo "Period=$PERIOD"; echo "Model=$MODEL"; echo "Optimization=1"
+  echo "Symbol=$SYMBOL"; echo "Period=$PERIOD"; echo "Model=$MODEL"; echo "Optimization=$OPT_MODE"
+  echo "OptimizationCriterion=$OPT_CRITERION"
   echo "FromDate=$FROM"; echo "ToDate=$TO"; echo "Deposit=$DEPOSIT"; echo "Currency=$CURRENCY"; echo "Leverage=$LEVERAGE"
   echo "ExecutionMode=0"; echo "UseLocal=1"; echo "UseRemote=0"; echo "UseCloud=0"
   echo "Report=zedmql_$NAME.xml"; echo "ReplaceReport=1"; echo "ShutdownTerminal=1"; echo "Visual=0"

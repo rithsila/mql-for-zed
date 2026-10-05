@@ -414,16 +414,16 @@ value || start || step || stop || enabled
 - [x] Validate input existence and optimization eligibility.
 - [x] Validate compatible types, ranges, and steps.
 - [x] Handle enum and boolean inputs explicitly.
-- [ ] Estimate exhaustive search size before execution.
-- [ ] Reject searches exceeding configured limits.
+- [x] Estimate exhaustive search size before execution.
+- [x] Reject searches exceeding configured limits.
 
 ### 4.3 Execution and artifacts
 
-- [ ] Add `MQL: Optimize` task.
+- [x] Add `MQL: Optimize` task.
 - [ ] Support small exhaustive searches first.
 - [ ] Add genetic optimization after baseline reliability.
-- [ ] Allow explicit objective selection.
-- [ ] Enforce hard pass/time limits.
+- [x] Allow explicit objective selection.
+- [x] Enforce hard pass/time limits.
 - [ ] Default to local tester agents only.
 - [ ] Store every completed pass with its parameters and experiment ID.
 - [ ] Retain completed passes after interruption.
@@ -490,15 +490,15 @@ Monte Carlo is not a snippets-sized task. It requires trustworthy trade reconstr
 Methods:
 
 - [ ] Implement trade-order reshuffling for path-dependent drawdown analysis.
-- [ ] Implement bootstrap resampling with replacement.
+- [x] Implement bootstrap resampling with replacement.
 - [ ] Implement block bootstrap to preserve some local outcome dependence.
 
 Inputs and outputs:
 
-- [ ] Accept saved run, method, simulation count, and random seed.
+- [x] Accept saved run, method, simulation count, and random seed.
 - [ ] Record assumptions and optional scenario adjustments.
-- [ ] Produce drawdown distributions.
-- [ ] Produce ending-balance distributions where the method changes final outcomes.
+- [x] Produce drawdown distributions.
+- [x] Produce ending-balance distributions where the method changes final outcomes.
 - [ ] Produce loss-streak distributions.
 - [ ] Report frequency of breaching a user-defined threshold.
 - [ ] Enforce simulation/runtime limits.

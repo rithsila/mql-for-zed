@@ -9,7 +9,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - **M6 (Optimization Task):**
   - **Parameter Validation:** Added strict bounds checking for optimization fields (`value||start||step||stop||Y`) within `.set` files in the language server. Emits diagnostics for zero-steps, invalid ranges (e.g. `start > stop` when `step > 0`), and type mismatches.
-  - **Feasibility Script:** Added `scripts/optimize-mql-remote.sh` demonstrating reliable optimization pass collection natively via MT5 XML exports, safely avoiding file-collision risks from parallel agents.
+  - **Limit Checking:** Added `scripts/check-opt-limits.py` to calculate exhaustive search size and enforce `MQL_OPT_MAX_PASSES` limits.
+  - **Feasibility Script:** Added `scripts/optimize-mql-remote.sh` demonstrating reliable optimization pass collection natively via MT5 XML exports, safely avoiding file-collision risks from parallel agents. Supports explicit criteria and modes.
+  - **Optimization Task:** Added `MQL: Optimize` task to `scripts/tasks.mql5-workspace.json`.
+  - **MCP Tool:** Added `mql_optimize` tool to `mql-mcp` for bounded search orchestration.
+- **M7 (Robustness Analysis - Monte Carlo):**
+  - Added `scripts/monte-carlo.py` script to accept a saved run directory and perform bootstrap resampling (with replacement) of trades grouped by `position_id` to generate ending-balance and drawdown distributions.
+  - Export `position_id` in `deals.csv` via `ZedMqlStats.mqh` for flawlessly pairing entry and exit deals into trades.
 - **M5 (Richer Evidence and Inputs: Equity Sampling and `.set` Language Support):**
   - **Equity Sampling:** Added `ZedMqlInitEquity`, `ZedMqlSampleEquity`, and `ZedMqlDeinitEquity` to `ZedMqlStats.mqh` to capture timestamp, balance, equity, margin, and free margin at bar, tick, or time-interval intervals.
   - Plotted sampled equity curves natively inside the generated HTML report and clearly distinguished sampled drawdown from native tester drawdown.

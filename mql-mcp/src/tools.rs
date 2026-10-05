@@ -64,6 +64,35 @@ pub fn list_tools() -> Vec<Tool> {
             }),
         },
         Tool {
+            name: "mql_optimize".into(),
+            description: "Start a bounded optimization search for an EA.".into(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the MQL5 file (.mq5)"
+                    },
+                    "criterion": {
+                        "type": "integer",
+                        "description": "0=Balance, 1=Profit Factor, 2=Expected Payoff, 3=Drawdown min, 4=Recovery Factor, 5=Sharpe, 6=Custom",
+                        "default": 0
+                    },
+                    "mode": {
+                        "type": "integer",
+                        "description": "1=Slow complete, 2=Fast genetic",
+                        "default": 1
+                    },
+                    "max_passes": {
+                        "type": "integer",
+                        "description": "Maximum allowed passes (fail fast if exceeded)",
+                        "default": 100000
+                    }
+                },
+                "required": ["path"]
+            }),
+        },
+        Tool {
             name: "mql_job_status".into(),
             description: "Return job state, stage, and available progress.".into(),
             input_schema: json!({
@@ -136,6 +165,6 @@ pub fn list_tools() -> Vec<Tool> {
                 },
                 "required": ["base_run_id", "compare_run_id"]
             }),
-        }
+        },
     ]
 }

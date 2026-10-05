@@ -15,6 +15,8 @@ MQL5 only. MQL4 is out of scope.
 | Hover, completion and go-to-definition for the standard library (`CTrade`, `CArrayObj`, ...) and your own workspace | yes |
 | Compile and syntax check from Zed tasks, with clickable `file:line:col` errors | yes, via a Windows machine over SSH (see below) |
 | Strategy Tester backtest from a Zed task (compile, deploy, run on the Windows machine, summary in the terminal) | yes, see "Backtest" below |
+| Optimization search with bounded limits checking and `.set` file parsing | yes |
+| Monte Carlo robustness analysis on backtest runs | yes, via `scripts/monte-carlo.py` |
 | Compile on macOS locally (Wine) | no (MetaEditor hangs when run headless under Wine) |
 | Compiler diagnostics in the Problems panel | opt-in remote syntax check on save (verified in Zed Problems panel) |
 | AI Agent Integration (MCP Server) | yes, via the `mql-mcp` binary |
@@ -223,6 +225,7 @@ Run a task with `cmd+shift+p`, **task: spawn**. The tasks act on the active file
 - **MQL: Compile** compiles and copies the resulting `.ex5` next to the source.
 - **MQL: Syntax check** runs MetaEditor's `/s` check only.
 - **MQL: Backtest** compiles, deploys and runs the EA in the Strategy Tester on the Windows machine, then prints a summary. See [Backtest](#backtest).
+- **MQL: Optimize** launches a bounded optimization search. Enforces exhaustive search limits configured in your `.set` file to prevent infinite execution.
 
 To compile a header, put this on its first line, with a path relative to the workspace root:
 
@@ -258,8 +261,14 @@ Requirements and behaviour, as observed on Windows 10 with MetaTrader 5 build 62
 
   void OnTick() {
     ZedMqlSampleEquity(); // Call as early as possible
-    // ... your trading logic ...
   }
+  ```
+
+### Optimization & Monte Carlo
+
+You can also run **MQL: Optimize** via Zed tasks to evaluate parameter ranges. Provide ranges in a `.set` file (parameters enabled with `Y` at the end). The task estimates combinations and fails fast if `MQL_OPT_MAX_PASSES` is exceeded.
+
+After obtaining a completed run with `mql_backtest` or standard Backtest, you can run `python3 scripts/monte-carlo.py --run-dir .mql/runs/<run_id>` to compute bootstrapped robustness distributions of final balance and max drawdown. The script perfectly pairs entries and exits using the `position_id` exported by `ZedMqlStats.mqh`.
 
   double OnTester() {
     ZedMqlPrintStats();
@@ -333,7 +342,7 @@ Zed task ──► scripts/compile-mql.sh ──► tar over ssh ──► MetaE
 
 ### AI Agent Integration (MCP)
 
-The project includes a native Rust **MCP Server** (`mql-mcp`) designed to let AI agents safely interact with MQL5 tools. It provides tools for syntax checking, compiling, and launching bounded asynchronous backtests without letting the agent execute arbitrary shell commands. It tracks Job IDs and pollable states so that long-running backtests can survive client disconnections.
+The project includes a native Rust **MCP Server** (`mql-mcp`) designed to let AI agents safely interact with MQL5 tools. It provides tools for syntax checking, compiling, launching bounded asynchronous backtests, and orchestrated optimizations (`mql_optimize`) without letting the agent execute arbitrary shell commands. It tracks Job IDs and pollable states so that long-running tasks can survive client disconnections.
 
 To start the server, you can run:
 `cargo run --bin mql-mcp`

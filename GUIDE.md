@@ -207,6 +207,8 @@ Tasks:
 
 - **MQL: Compile** compiles and copies the `.ex5` back next to the source.
 - **MQL: Syntax check** runs MetaEditor's `/s` check only.
+- **MQL: Backtest** compiles, deploys, and runs the Strategy Tester natively.
+- **MQL: Optimize** runs bounded parameter sweeps via `scripts/optimize-mql-remote.sh`.
 
 ### Opt-in Problems-panel compiler checks
 
@@ -266,9 +268,14 @@ The task then compiles that program.
 
 Files deleted on the Mac are not deleted on the VM copy. Remove old copies by hand if needed: `ssh mqlvm 'rmdir /s /q C:\Users\<user>\mql-work\<workspace>'`.
 
+### Optimization & Monte Carlo
+
+- Use the **MQL: Optimize** task to search your parameter space natively via MT5 on the remote Windows VM. It respects bounds checking limits (preventing infinite exhaustive searches) by evaluating `value||start||step||stop||Y` flags inside the active `.set` file.
+- After a run completes in `.mql/runs/<run_id>`, pass that path to `python3 scripts/monte-carlo.py --run-dir ...` to sample random bootstrapped subsets of the generated trades (matched cleanly via `position_id`) and output a percentile distribution of final balances and maximum drawdowns.
+
 ### AI Agent Integration (MCP)
 
-The project includes a native Rust **MCP Server** (`mql-mcp`) designed to let AI agents safely interact with MQL5 tools. It provides tools for syntax checking, compiling, and launching bounded asynchronous backtests without letting the agent execute arbitrary shell commands. It tracks Job IDs and pollable states so that long-running backtests can survive client disconnections.
+The project includes a native Rust **MCP Server** (`mql-mcp`) designed to let AI agents safely interact with MQL5 tools. It provides tools for syntax checking, compiling, launching bounded asynchronous backtests, and remote optimizations without letting the agent execute arbitrary shell commands. It tracks Job IDs and pollable states so that long-running backtests can survive client disconnections.
 
 To run the MCP server:
 
