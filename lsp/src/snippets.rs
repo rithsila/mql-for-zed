@@ -70,6 +70,12 @@ pub const SNIPPETS: &[Snippet] = &[
         doc: "Strategy Tester custom criterion calculation handler.",
         body: "double OnTester()\n{\n   ${1:// Custom optimization criterion}\n   return(0.0);\n}",
     },
+    Snippet {
+        label: "zedmql-equity",
+        detail: "Initialize ZedMql equity sampling",
+        doc: "Setup ZedMqlStats equity sampling in OnInit for accurate risk assessment.",
+        body: "#include <ZedMqlStats.mqh>\n\nint OnInit()\n{\n   ZedMqlInitEquity(ZEDMQL_SAMPLE_BAR);\n   return(INIT_SUCCEEDED);\n}\n\nvoid OnTick()\n{\n   ZedMqlSampleEquity();\n   ${1:// Trading logic}\n}\n\ndouble OnTester()\n{\n   ZedMqlPrintStats();\n   return(0.0);\n}\n\nvoid OnDeinit(const int reason)\n{\n   ZedMqlDeinitEquity();\n}",
+    },
 ];
 
 pub fn all_completion_items() -> Vec<CompletionItem> {

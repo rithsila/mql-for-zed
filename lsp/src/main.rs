@@ -354,6 +354,36 @@ fn handle_request(req: Request, docs: &HashMap<Url, (String, i32)>, index: &Inde
         GotoDefinition::METHOD => {
             let p: GotoDefinitionParams = serde_json::from_value(req.params).unwrap();
             let tdp = p.text_document_position_params;
+
+            if let Some(path) = path_of(&tdp.text_document.uri) {
+                if path.extension().is_some_and(|e| e == "set") {
+                    if let Some(text) = text_of(docs, &tdp.text_document.uri) {
+                        if let Some(line) = text.lines().nth(tdp.position.line as usize) {
+                            if let Some(eq_idx) = line.find('=') {
+                                let key = line[..eq_idx].trim();
+                                if (tdp.position.character as usize) <= eq_idx {
+                                    if let Some(inputs) =
+                                        set_file::get_mq5_inputs_for_set_file(&path)
+                                    {
+                                        if let Some(param) = inputs.iter().find(|i| i.name == key) {
+                                            let mq5_path = path.with_extension("mq5");
+                                            if let Ok(uri) = Url::from_file_path(mq5_path) {
+                                                let pos =
+                                                    Position::new(param.line, param.character);
+                                                return ok(serde_json::to_value(vec![
+                                                    Location::new(uri, Range::new(pos, pos)),
+                                                ])
+                                                .unwrap());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             let locs: Vec<Location> = text_of(docs, &tdp.text_document.uri)
                 .and_then(|t| word_at(&t, tdp.position))
                 .and_then(|w| index.symbols.get(&w))

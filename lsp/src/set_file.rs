@@ -9,21 +9,43 @@ pub struct InputParam {
     pub name: String,
     pub type_name: String,
     pub default_value: String,
+    pub line: u32,
+    pub character: u32,
 }
 
 pub fn parse_mq5_inputs(text: &str) -> Vec<InputParam> {
     let re = Regex::new(r"(?m)^\s*s?input\s+(?P<type>[A-Za-z_][\w ]*?)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<rest>.*)$").unwrap();
     let mut inputs = Vec::new();
+
+    // To calculate line numbers, we can just find line starts
+    let line_starts: Vec<usize> = std::iter::once(0)
+        .chain(text.match_indices('\n').map(|(i, _)| i + 1))
+        .collect();
+
     for cap in re.captures_iter(text) {
         if cap["type"].trim() == "group" {
             continue;
         }
         let rest = cap["rest"].to_string();
         let val = rest.split(';').next().unwrap_or("").trim().to_string();
+
+        let match_start = cap.get(0).unwrap().start();
+        let name_start = cap.name("name").unwrap().start();
+
+        // Find line number
+        let line_idx = match line_starts.binary_search(&match_start) {
+            Ok(idx) => idx,
+            Err(idx) => idx.saturating_sub(1),
+        };
+        let line = line_idx as u32;
+        let character = (name_start - line_starts[line_idx]) as u32;
+
         inputs.push(InputParam {
             name: cap["name"].to_string(),
             type_name: cap["type"].trim().to_string(),
             default_value: val,
+            line,
+            character,
         });
     }
     inputs

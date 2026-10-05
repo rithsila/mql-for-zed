@@ -37,7 +37,7 @@ Feature groups are split across milestones to deliver useful capabilities early.
 - [x] **M2 — Local feedback:** initial conservative lint rules and tested snippets.
 - [x] **M3 — Test evidence:** immutable run history, structured results, and comparison.
 - [x] **M4 — MCP MVP:** safe configuration, job management, compile/backtest/result tools.
-- [ ] **M5 — Richer evidence and inputs:** equity sampling and `.set` language support.
+- [x] **M5 — Richer evidence and inputs:** equity sampling and `.set` language support.
 - [ ] **M6 — Optimization:** prove pass collection, then ship a bounded optimization task.
 - [ ] **M7 — Robustness analysis:** seeded Monte Carlo with documented assumptions.
 
@@ -476,7 +476,7 @@ value || start || step || stop || enabled
 - [x] Diagnose unknown and duplicate inputs.
 - [x] Validate literal values and enums.
 - [ ] Validate optimization ranges.
-- [ ] Support go-to-definition for input names.
+- [x] Support go-to-definition for input names.
 - [ ] Add generate-defaults command.
 - [ ] Add compare-with-source command.
 - [ ] Merge newly added inputs without overwriting user values.
