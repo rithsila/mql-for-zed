@@ -35,7 +35,7 @@ Feature groups are split across milestones to deliver useful capabilities early.
 
 - [x] **M1 — Compiler diagnostics:** structured compile results and Problems-panel integration (syntax-only Windows fixture, local LSP protocol tests, and live Zed Problems-panel UI verified end-to-end).
 - [x] **M2 — Local feedback:** initial conservative lint rules and tested snippets.
-- [ ] **M3 — Test evidence:** immutable run history, structured results, and comparison.
+- [x] **M3 — Test evidence:** immutable run history, structured results, and comparison.
 - [x] **M4 — MCP MVP:** safe configuration, job management, compile/backtest/result tools.
 - [ ] **M5 — Richer evidence and inputs:** equity sampling and `.set` language support.
 - [ ] **M6 — Optimization:** prove pass collection, then ship a bounded optimization task.
@@ -64,7 +64,7 @@ MCP prototyping can begin after M3. It does not need to wait for equity sampling
 - [x] Define versioned compiler diagnostic and compile-result schemas.
 - [x] Define versioned run manifest and result schemas.
 - [x] Define explicit unavailable/invalid/partial metric representation.
-- [ ] Preserve metric provenance: native tester, deal-derived, or equity-sample-derived.
+- [x] Preserve metric provenance: native tester, deal-derived, or equity-sample-derived.
 - [ ] Introduce reusable runner operations shared by tasks and MCP.
 - [x] Preserve current human-readable terminal output alongside structured output.
 - [ ] Add safe, non-executable runner configuration.
