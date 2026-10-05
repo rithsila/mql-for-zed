@@ -64,9 +64,32 @@ vm() { ssh "${SSH_OPTS[@]}" "$HOST" "$@"; }
 TMP="$(mktemp -d -t mqltester)"; trap 'rm -rf "$TMP"' EXIT
 vm_running() { vm "powershell -NoProfile -Command \"@(Get-Process terminal64 -ErrorAction SilentlyContinue | Where-Object { \$_.Path -eq '$(winpath "$VM_TERM")' }).Count\"" 2>/dev/null | tr -d '\r[:space:]'; }
 
+# Generate Run ID and setup Run Directory
+NOW=$(date -u +%Y%m%dT%H%M%S)
+if [ -d "$WS/.git" ]; then
+  COMMIT=$(git -C "$WS" rev-parse --short HEAD 2>/dev/null || echo "nogit")
+  git -C "$WS" status --porcelain 2>/dev/null | grep -q . && DIRTY="-dirty" || DIRTY=""
+  GIT_ID="${COMMIT}${DIRTY}"
+else
+  GIT_ID="nogit"
+fi
+RUN_ID="${NOW}-${GIT_ID}-${NAME}"
+RUN_DIR="$WS/.mql/runs/$RUN_ID"
+mkdir -p "$RUN_DIR"
+echo "== Run ID: $RUN_ID"
+
 # 1. Compile + deploy
 echo "== Compile + deploy: $REL"
 MQL_DEPLOY=1 bash "$SCRIPT_DIR/compile-mql-remote.sh" "$FILE" || die "compile failed; not running the tester"
+
+EX5_HASH=""
+if [[ -f "${SRC%.*}.ex5" ]]; then
+  if command -v sha256sum >/dev/null; then
+    EX5_HASH="$(sha256sum "${SRC%.*}.ex5" | awk '{print $1}')"
+  elif command -v shasum >/dev/null; then
+    EX5_HASH="$(shasum -a 256 "${SRC%.*}.ex5" | awk '{print $1}')"
+  fi
+fi
 
 # 2. Account (the tester needs one; use the terminal's saved account unless overridden)
 LOGIN="${MQL_BT_LOGIN:-}"; SERVER="${MQL_BT_SERVER:-}"
@@ -95,6 +118,7 @@ if [[ -f "$SET" ]]; then
   vm "mkdir \"$(winpath "$VM_MQL5")\\Profiles\\Tester\" 2>nul & exit 0"
   scp -q "${SSH_OPTS[@]}" "$SET" "$HOST:$VM_MQL5/Profiles/Tester/$UPLOADED" || die "could not upload $SET"
   SETLINE="ExpertParameters=$UPLOADED"
+  cp "$SET" "$RUN_DIR/inputs.set"
   echo "== Inputs: $(basename "$SET")"
 fi
 
@@ -108,6 +132,7 @@ INI="$TMP/zedmql-$NAME.ini"
   echo "ExecutionMode=0"; echo "UseLocal=1"; echo "UseRemote=0"; echo "UseCloud=0"
   echo "Report=zedmql_$NAME.htm"; echo "ReplaceReport=1"; echo "ShutdownTerminal=1"; echo "Visual=0"
 } > "$INI"
+cp "$INI" "$RUN_DIR/tester.ini"
 VM_INI="$VM_WORK/zedmql-$NAME.ini"
 scp -q "${SSH_OPTS[@]}" "$INI" "$HOST:$VM_INI" || die "could not upload tester ini"
 
@@ -145,17 +170,44 @@ done
 echo "== Tester finished in $((SECONDS - START))s"
 
 # 7. Results: HTML report if the terminal wrote one, else the tester log summary
-OUT="$(dirname "$SRC")"
-if scp -q "${SSH_OPTS[@]}" "$HOST:$DATA/zedmql_$NAME.htm" "$OUT/$NAME.htm" 2>/dev/null; then
-  echo "Report: $OUT/$NAME.htm"
+if scp -q "${SSH_OPTS[@]}" "$HOST:$DATA/zedmql_$NAME.htm" "$RUN_DIR/report.html" 2>/dev/null; then
+  echo "Report: $RUN_DIR/report.html"
 fi
-scp -q "${SSH_OPTS[@]}" "$HOST:$TLOG" "$TMP/tester.log" 2>/dev/null || : > "$TMP/tester.log"
-scp -q "${SSH_OPTS[@]}" "$HOST:$MLOG" "$TMP/terminal.log" 2>/dev/null || : > "$TMP/terminal.log"
-scp -q "${SSH_OPTS[@]}" "$HOST:$COMMON_FILES/$DEALS" "$TMP/deals.csv" 2>/dev/null || rm -f "$TMP/deals.csv"
-python3 "$SCRIPT_DIR/parse-tester-log.py" --tester-log "$TMP/tester.log" --tester-offset "$TOFF" \
-  --terminal-log "$TMP/terminal.log" --terminal-offset "$MOFF" --deposit "$DEPOSIT" --currency "$CURRENCY" \
-  --save-tester-segment "$OUT/$NAME.tester.log" --deals-csv "$TMP/deals.csv" --report-html "$OUT/$NAME.report.html" \
-  --title "$NAME backtest" --info "$SYMBOL $PERIOD, model $MODEL, $FROM to $TO, deposit $DEPOSIT $CURRENCY, leverage $LEVERAGE" | tee "$OUT/$NAME.summary.txt"
+scp -q "${SSH_OPTS[@]}" "$HOST:$TLOG" "$RUN_DIR/tester.log" 2>/dev/null || : > "$RUN_DIR/tester.log"
+scp -q "${SSH_OPTS[@]}" "$HOST:$MLOG" "$RUN_DIR/terminal.log" 2>/dev/null || : > "$RUN_DIR/terminal.log"
+scp -q "${SSH_OPTS[@]}" "$HOST:$COMMON_FILES/$DEALS" "$RUN_DIR/deals.csv" 2>/dev/null || rm -f "$RUN_DIR/deals.csv"
+
+# Build manifest
+cat > "$RUN_DIR/manifest.json" <<EOF
+{
+  "schema_version": 1,
+  "run_id": "$RUN_ID",
+  "timestamp": "$NOW",
+  "source": {
+    "file": "$REL",
+    "git_id": "$GIT_ID",
+    "compiled_hash": "$EX5_HASH"
+  },
+  "conditions": {
+    "symbol": "$SYMBOL",
+    "period": "$PERIOD",
+    "model": "$MODEL",
+    "from_date": "$FROM",
+    "to_date": "$TO",
+    "deposit": $DEPOSIT,
+    "currency": "$CURRENCY",
+    "leverage": "$LEVERAGE"
+  },
+  "notes": {
+    "market_history_archived": false
+  }
+}
+EOF
+
+python3 "$SCRIPT_DIR/parse-tester-log.py" --tester-log "$RUN_DIR/tester.log" --tester-offset "$TOFF" \
+  --terminal-log "$RUN_DIR/terminal.log" --terminal-offset "$MOFF" --deposit "$DEPOSIT" --currency "$CURRENCY" \
+  --run-dir "$RUN_DIR" \
+  --title "$NAME backtest" --info "$SYMBOL $PERIOD, model $MODEL, $FROM to $TO, deposit $DEPOSIT $CURRENCY, leverage $LEVERAGE" | tee "$RUN_DIR/summary.txt"
 STATUS=${PIPESTATUS[0]}
-echo "Saved next to the source: $OUT/$NAME.summary.txt, $OUT/$NAME.tester.log"
+echo "Saved in $RUN_DIR"
 exit $STATUS

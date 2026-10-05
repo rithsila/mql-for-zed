@@ -62,14 +62,14 @@ MCP prototyping can begin after M3. It does not need to wait for equity sampling
 ### Tasks
 
 - [x] Define versioned compiler diagnostic and compile-result schemas.
-- [ ] Define versioned run manifest and result schemas.
-- [ ] Define explicit unavailable/invalid/partial metric representation.
+- [x] Define versioned run manifest and result schemas.
+- [x] Define explicit unavailable/invalid/partial metric representation.
 - [ ] Preserve metric provenance: native tester, deal-derived, or equity-sample-derived.
 - [ ] Introduce reusable runner operations shared by tasks and MCP.
 - [x] Preserve current human-readable terminal output alongside structured output.
 - [ ] Add safe, non-executable runner configuration.
 - [ ] Require explicit trust before executing legacy shell configuration.
-- [ ] Define workspace identity, source snapshot identity, and immutable run IDs. (M1 source snapshot and check job identity implemented; run IDs deferred.)
+- [x] Define workspace identity, source snapshot identity, and immutable run IDs. (M1 source snapshot and check job identity implemented; run IDs deferred.)
 - [ ] Implement job ownership and locking per terminal data directory.
 - [ ] Define timeouts, cancellation, and unknown remote-state handling.
 - [ ] Add artifact-size and output-size limits.
@@ -79,7 +79,7 @@ MCP prototyping can begin after M3. It does not need to wait for equity sampling
 
 - [ ] CLI and MCP do not maintain separate implementations of compile/backtest semantics.
 - [x] Empty diagnostics cannot be mistaken for proof that compilation ran successfully.
-- [ ] Missing statistics are not represented as zero.
+- [x] Missing statistics are not represented as zero.
 - [ ] Untrusted workspace configuration cannot silently execute shell code through MCP.
 
 ---
@@ -184,38 +184,38 @@ Proposed layout:
 
 Artifacts can be absent when unavailable; the manifest must explain why.
 
-- [ ] Generate a unique run directory for every attempt, including failures.
-- [ ] Add appropriate Git ignore guidance.
-- [ ] Record EA entry point and source/include hashes.
-- [ ] Record Git commit and dirty state when available.
-- [ ] Record compiled binary hash.
-- [ ] Preserve exact input file and resolved tester configuration.
-- [ ] Record symbol, timeframe, dates, model, deposit, currency, and leverage.
+- [x] Generate a unique run directory for every attempt, including failures.
+- [x] Add appropriate Git ignore guidance.
+- [x] Record EA entry point and source/include hashes.
+- [x] Record Git commit and dirty state when available.
+- [x] Record compiled binary hash.
+- [x] Preserve exact input file and resolved tester configuration.
+- [x] Record symbol, timeframe, dates, model, deposit, currency, and leverage.
 - [ ] Record terminal/compiler versions when obtainable.
 - [ ] Record broker/server context with privacy-aware handling.
 - [ ] Record instrumentation version and artifact availability.
 - [ ] Record available historical-data/model metadata.
-- [ ] Disclose when market history is not archived and exact replay cannot be guaranteed.
+- [x] Disclose when market history is not archived and exact replay cannot be guaranteed.
 
 ### 2.2 Structured results
 
-- [ ] Add versioned `result.json` output.
-- [ ] Represent unavailable metrics as null plus an explanation.
-- [ ] Distinguish parsing failures from absent instrumentation.
-- [ ] Record native versus derived metric provenance.
+- [x] Add versioned `result.json` output.
+- [x] Represent unavailable metrics as null plus an explanation.
+- [x] Distinguish parsing failures from absent instrumentation.
+- [x] Record native versus derived metric provenance.
 - [ ] Label absolute and relative maximum drawdown separately; they may occur at different times.
-- [ ] Make HTML reports, CLI comparison, and MCP consume the same result schema.
+- [x] Make HTML reports, CLI comparison, and MCP consume the same result schema.
 - [ ] Test failed, partial, zero-trade, and successful runs.
 
 ### 2.3 Run comparison
 
-- [ ] Add terminal comparison output.
+- [x] Add terminal comparison output.
 - [ ] Add generated HTML comparison output.
-- [ ] Compare profit, return, profit factor, drawdown, recovery factor, trade count, and expected payoff.
-- [ ] Show input changes, source identity changes, and configuration changes.
-- [ ] Classify comparisons as matched conditions, different conditions, or incomplete evidence.
-- [ ] Warn when model, date range, symbol, account currency, or other material settings differ.
-- [ ] Avoid silently ranking unlike tests as equivalent evidence.
+- [x] Compare profit, return, profit factor, drawdown, recovery factor, trade count, and expected payoff.
+- [x] Show input changes, source identity changes, and configuration changes.
+- [x] Classify comparisons as matched conditions, different conditions, or incomplete evidence.
+- [x] Warn when model, date range, symbol, account currency, or other material settings differ.
+- [x] Avoid silently ranking unlike tests as equivalent evidence.
 
 ### 2.4 Equity sampling
 
@@ -235,11 +235,11 @@ Artifacts can be absent when unavailable; the manifest must explain why.
 
 ### Acceptance criteria
 
-- [ ] Consecutive runs never overwrite each other.
-- [ ] Each result identifies exact inputs and source snapshot.
-- [ ] Material test-condition differences are visible.
+- [x] Consecutive runs never overwrite each other.
+- [x] Each result identifies exact inputs and source snapshot.
+- [x] Material test-condition differences are visible.
 - [ ] Balance and equity curves cannot be confused.
-- [ ] Missing instrumentation yields an explicitly partial report.
+- [x] Missing instrumentation yields an explicitly partial report.
 - [ ] Sampled equity is not presented as exact intrabar risk measurement.
 
 ---

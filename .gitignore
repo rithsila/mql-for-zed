@@ -1,3 +1,6 @@
+# Local runs and state
+.mql/runs/
+
 # Build artifacts
 /target/
 

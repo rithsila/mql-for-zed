@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **M3 (Immutable Run History & Structured Results):** 
+  - Generates immutable run directories (`.mql/runs/<run-id>/`) containing exact test conditions: `manifest.json`, `inputs.set`, `tester.ini`, compiled `.ex5` binary hash, and execution logs.
+  - Generates versioned `result.json` explicitly recording unavailable/partial metrics and metric provenance instead of returning unverified zero values.
+  - Added CLI tool `scripts/compare-runs.py` to compare two backtest run directories, matching inputs and explicitly warning if material test conditions (like date ranges, symbols, or deposit amounts) differ.
 - MCP Server (`mql-mcp`) implemented in Rust for AI agent integration, exposing `mql_compile`, `mql_backtest`, and job management tools without exposing arbitrary shell execution.
 
 

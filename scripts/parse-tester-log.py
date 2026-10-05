@@ -3,6 +3,8 @@
 import argparse
 import csv
 import html
+import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -98,6 +100,7 @@ def main():
     ap.add_argument("--save-tester-segment")
     ap.add_argument("--deals-csv")
     ap.add_argument("--report-html")
+    ap.add_argument("--run-dir")
     ap.add_argument("--title", default="Strategy Tester")
     ap.add_argument("--info", default="")
     a = ap.parse_args()
@@ -114,15 +117,22 @@ def main():
             print(f"FAIL: {m}")
     failed = [m for m in term if re.search(r"tester (not started|didn't start)", m, re.I)]
     if failed:
+        if a.run_dir:
+            with open(os.path.join(a.run_dir, "result.json"), "w") as f:
+                json.dump({"schema_version": 1, "status": "failed", "error": "tester did not start"}, f, indent=2)
         return 1
 
     final = [re.search(r"final balance\s+([-\d.]+)\s*(\w*)", m) for m in test]
     final = [m for m in final if m]
     finished = [m for m in term if "last test passed" in m or "last test failed" in m]
     if not final:
-        print("FAIL: no 'final balance' in tester log" + (f" ({finished[-1]})" if finished else " (tester did not run)"))
+        err = "no 'final balance' in tester log" + (f" ({finished[-1]})" if finished else " (tester did not run)")
+        print(f"FAIL: {err}")
         for m in [m for m in test if re.search(r"error|fail|cannot|not found|critical", m, re.I)][-8:]:
             print(f"  {m}")
+        if a.run_dir:
+            with open(os.path.join(a.run_dir, "result.json"), "w") as f:
+                json.dump({"schema_version": 1, "status": "failed", "error": err}, f, indent=2)
         return 1
 
     bal = float(final[-1].group(1))
@@ -148,20 +158,55 @@ def main():
         print(f"Data          : {mem.split(': ', 1)[-1].split('. ')[0]}")
     stats = next((dict(kv.split("=", 1) for kv in re.search(r"ZEDMQL_STATS (.*)", m).group(1).split() if "=" in kv)
                   for m in reversed(test) if "ZEDMQL_STATS " in m), None)
+    
+    result_json = {
+        "schema_version": 1,
+        "status": "success",
+        "metrics": {
+            "final_balance": {"value": bal, "provenance": "native"},
+            "deals": {"value": deals, "provenance": "native"}
+        },
+        "unavailable_metrics": {}
+    }
+    if a.deposit:
+        result_json["metrics"]["net_profit"] = {"value": bal - a.deposit, "provenance": "native"}
+
     if stats:
         g = lambda k: float(stats.get(k, "nan"))
+        result_json["metrics"].update({
+            "trades": {"value": int(g('trades')), "provenance": "native"},
+            "profit_factor": {"value": g('profit_factor'), "provenance": "native"},
+            "gross_profit": {"value": g('gross_profit'), "provenance": "native"},
+            "gross_loss": {"value": g('gross_loss'), "provenance": "native"},
+            "equity_dd": {"value": g('equity_dd'), "provenance": "native"},
+            "equity_dd_pct": {"value": g('equity_dd_pct'), "provenance": "native"},
+            "recovery_factor": {"value": g('recovery_factor'), "provenance": "native"},
+            "sharpe": {"value": g('sharpe'), "provenance": "native"},
+            "expected_payoff": {"value": g('expected_payoff'), "provenance": "native"}
+        })
         print(f"Trades        : {int(g('trades'))}")
         print(f"Profit factor : {g('profit_factor'):.2f}   (gross +{g('gross_profit'):.2f} / {g('gross_loss'):.2f})")
         print(f"Equity DD     : {g('equity_dd'):.2f} {cur}  ({g('equity_dd_pct'):.2f}%)")
         print(f"Recovery      : {g('recovery_factor'):.2f}   Sharpe {g('sharpe'):.2f}   Expected payoff {g('expected_payoff'):.2f}")
-        deals = load_deals(a.deals_csv) if a.deals_csv else []
-        if deals and a.report_html:
-            write_report(a.report_html, a.title, a.info, deals, cur, stats)
+        deal_list = load_deals(a.deals_csv) if a.deals_csv else []
+        if deal_list and a.report_html:
+            write_report(a.report_html, a.title, a.info, deal_list, cur, stats)
             print(f"Report        : {a.report_html}")
         elif a.report_html:
             print("Report        : not written (no deal list; update ZedMqlStats.mqh in the EA's include and rebuild)")
     else:
-        print("Drawdown / PF : not available; add ZedMqlStats.mqh to the EA's OnTester (see README)")
+        reason = "not available; add ZedMqlStats.mqh to the EA's OnTester"
+        result_json["unavailable_metrics"] = {
+            "trades": reason, "profit_factor": reason, "gross_profit": reason,
+            "gross_loss": reason, "equity_dd": reason, "equity_dd_pct": reason,
+            "recovery_factor": reason, "sharpe": reason, "expected_payoff": reason
+        }
+        print(f"Drawdown / PF : {reason}")
+
+    if a.run_dir:
+        with open(os.path.join(a.run_dir, "result.json"), "w") as f:
+            json.dump(result_json, f, indent=2)
+
     return 0
 
 
