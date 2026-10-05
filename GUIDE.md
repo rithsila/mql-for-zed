@@ -270,8 +270,35 @@ Files deleted on the Mac are not deleted on the VM copy. Remove old copies by ha
 
 The project includes a native Rust **MCP Server** (`mql-mcp`) designed to let AI agents safely interact with MQL5 tools. It provides tools for syntax checking, compiling, and launching bounded asynchronous backtests without letting the agent execute arbitrary shell commands. It tracks Job IDs and pollable states so that long-running backtests can survive client disconnections.
 
-To start the server, you can run:
-`cargo run --bin mql-mcp`
+To run the MCP server:
+
+1. Build it from source:
+   ```sh
+   cd ~/Projects/zed-mql/mql-mcp
+   cargo build --release
+   ```
+2. Configure your AI agent (like Claude Desktop or Zed's built-in MCP client) to start the `mql-mcp` binary via standard input/output. For example, in Zed's `settings.json`:
+   ```json
+   {
+     "mcp": {
+       "servers": {
+         "mql-mcp": {
+           "command": "/absolute/path/to/zed-mql/mql-mcp/target/release/mql-mcp",
+           "args": []
+         }
+       }
+     }
+   }
+   ```
+   
+The server supports the following tools automatically:
+- `mql_doctor`: Check tools, host, and tester readiness.
+- `mql_lint`: Run local MQL5 lint findings.
+- `mql_compile`: Start a syntax-check or full compile job.
+- `mql_backtest`: Start an asynchronous backtest on the configured Windows machine.
+- `mql_job_status`: Poll an ongoing backtest or compile job.
+- `mql_job_cancel`: Cancel a pending or running job.
+- `mql_list_runs`, `mql_get_run`, `mql_compare_runs`: Read, query, and compare the immutable backtest runs saved in `.mql/runs/`.
 
 ## 9. Troubleshooting
 
