@@ -8,8 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Opt-in remote syntax checks on save in `mql-lsp`, with background execution, debouncing, stale-result rejection, and compiler diagnostics for mapped workspace and include files in Problems. Checks never deploy an EA; Windows integration and MetaEditor column units remain unverified.
-- Versioned JSON compile results (`--check --json --job-id ID --snapshot ID`) with distinct success, compiler-error, SSH, launch and log-failure states; local fixture/mock-runner tests. Clickable task output remains available.
+- Opt-in remote syntax checks on save in `mql-lsp`, with background execution, save debouncing/coalescing, stale-result rejection via document versions and source snapshots, and compiler diagnostics published to Zed's Problems panel for mapped workspace and include files. Checks never deploy an EA; verified live end-to-end in Zed's Problems panel with MetaEditor on Windows, confirming one-based UTF-16 compiler columns, header error navigation, and diagnostic clearing on clean compile.
+- Versioned JSON compile results (`--check --json --job-id ID --snapshot ID`) in `scripts/compile-mql.sh` and `scripts/compile-mql-remote.sh` via `scripts/parse-mql-log.py`, with distinct success (`0`), compiler-error (`1`), and launch/SSH/log failure (`2`) states, tested against UTF-8 and UTF-16 logs and space-containing paths while preserving clickable task output.
+- Comprehensive test suite for compiler diagnostics: Rust unit tests in `lsp/src/compiler.rs`, end-to-end parser/runner tests in `scripts/test_compile_mql.py`, and LSP stdio protocol integration tests in `scripts/test_lsp_compiler.py`.
 
 - `MQL: Backtest` task (`scripts/tester-mql-remote.sh`, `scripts/parse-tester-log.py`): compiles and deploys the EA, writes a tester `.ini`, runs `terminal64.exe /config:` with `ShutdownTerminal=1` on the Windows machine, waits, and prints a summary (deposit, final balance, net, deals, `OnTester`, test time) parsed from the tester log. Configured with `MQL_BT_*` variables, `~/.config/zed-mql/env` and an optional `<workspace>/.zed/mql-tester.env`; `<EA>.set` next to the source is used as the inputs file. Closes a running GUI terminal of the same install first (`MQL_BT_CLOSE_GUI=0` to abort instead).
 - Added to `scripts/tasks.mql5-workspace.json`.

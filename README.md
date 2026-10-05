@@ -16,7 +16,7 @@ MQL5 only. MQL4 is out of scope.
 | Compile and syntax check from Zed tasks, with clickable `file:line:col` errors | yes, via a Windows machine over SSH (see below) |
 | Strategy Tester backtest from a Zed task (compile, deploy, run on the Windows machine, summary in the terminal) | yes, see "Backtest" below |
 | Compile on macOS locally (Wine) | no (MetaEditor hangs when run headless under Wine) |
-| Compiler diagnostics in the Problems panel | opt-in remote syntax check on save (Windows integration pending) |
+| Compiler diagnostics in the Problems panel | opt-in remote syntax check on save (verified in Zed Problems panel) |
 
 ## Install
 
@@ -84,7 +84,9 @@ Build/install the current `mql-lsp` binary and configure Zed's `settings.json`:
 
 Restart the language server after changing settings. The option is **off by default**. A save runs `--check` (MetaEditor `/s`), never copies or deploys an `.ex5`, and sends the workspace's `.mq5`/`.mqh` source files to the configured Windows SSH host. Use `~/.config/zed-mql/env` to configure the host and path mapping below; this legacy file is sourced as shell code, so use only a trusted configuration. Optionally set `compilerCheck.workspaceRoot` to an absolute path matching `MQL_WORKSPACE_ROOT` if the Zed worktree differs from the source-sync root. `.mqh` files need the existing first-line `//###<path/to/Main.mq5>` marker. Errors in included files are published under their mapped local URI (set `MQL_VM_MQL5_ROOT` and `MQL_LOCAL_MQL5_ROOT` for standard-library headers).
 
-Checks are debounced; a later edit/save or changed source snapshot makes an older result obsolete. A successful check clears prior compiler findings; SSH, launch and log failures keep previous diagnostics and log the reason to the language-server stderr. Compiler columns are displayed at the start of their reported line until the MetaEditor column convention is verified on Windows, including Unicode. Terminal tasks and clickable output are unchanged. For machine-readable output use `bash scripts/compile-mql.sh --check --json --job-id ID --snapshot ID <file.mq5>`; its v1 JSON includes `status`, `diagnostics`, `job_id`, `source_snapshot`, and `message`, with exit codes 0 (success), 1 (compiler errors), 2 (infrastructure/log failure).
+Checks are debounced; a later edit/save or changed source snapshot makes an older result obsolete. A successful check clears prior compiler findings; SSH, launch and log failures keep previous diagnostics and log the reason to the language-server stderr. Compiler columns are converted from MetaEditor's one-based UTF-16 offsets to LSP's zero-based UTF-16 offsets, verified with a Unicode fixture on the configured Windows VM. Terminal tasks and clickable output are unchanged. For machine-readable output use `bash scripts/compile-mql.sh --check --json --job-id ID --snapshot ID <file.mq5>`; its v1 JSON includes `status`, `diagnostics`, `job_id`, `source_snapshot`, and `message`, with exit codes 0 (success), 1 (compiler errors), 2 (infrastructure/log failure).
+
+To finish the **Zed UI check**, first confirm Zed is running the newly built server, not the previously downloaded `mql-lsp-v0.1.1`: put the current build on Zed's `PATH` as described in [Install](#as-a-dev-extension), restart the language server, then inspect the running `mql-lsp` process path or the Zed log. In a disposable workspace, create `EA.mq5` that includes `Include Test.mqh`; give the header a first-line `//###<EA.mq5>` marker. Introduce an unresolved symbol in the header and save it, then open Problems: the error should open the local header at the reported position. Correct the symbol and save again: the error should disappear. **This exercise sends the workspace's MQL source to the configured Windows host**; do it only when you intend to run a remote syntax check. Do not use the Compile or Backtest tasks for this check.
 
 ## Compile and syntax check
 
@@ -249,9 +251,8 @@ Zed task ──► scripts/compile-mql.sh ──► tar over ssh ──► MetaE
 Pull requests are welcome. Useful areas:
 
 1. **More built-ins** in `lsp/data/builtins.json`. Write original descriptions; do not paste text from the MQL5 documentation.
-2. **Compiler column validation** against MetaEditor on Windows, including Unicode source.
-3. **Context-aware completion**, such as members after `.` and `::`.
-4. **A working local compile path** for macOS or Linux.
+2. **Context-aware completion**, such as members after `.` and `::`.
+3. **A working local compile path** for macOS or Linux.
 
 Run the tests with `cargo test --manifest-path lsp/Cargo.toml`. Note changes under `[Unreleased]` in [`changelog.md`](changelog.md).
 
