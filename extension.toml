@@ -10,9 +10,13 @@ repository = "https://github.com/rithsila/mql-for-zed"
 repository = "https://github.com/tree-sitter/tree-sitter-cpp"
 rev = "c009222808634c1014f82438d4883753516a2c24"
 
+[grammars.ini]
+repository = "https://github.com/justinmk/tree-sitter-ini"
+rev = "e4018b5176132b4f3c5d6e61cea383f42288d0f5"
+
 [lib]
 kind = "Rust"
 
 [language_servers.mql-lsp]
 name = "MQL Language Server"
-languages = ["MQL"]
+languages = ["MQL", "MQL Set"]

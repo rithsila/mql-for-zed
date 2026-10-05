@@ -155,9 +155,9 @@ DAY="$(vm 'powershell -NoProfile -Command "Get-Date -Format yyyyMMdd"' | tr -d '
 TLOG="$DATA/Tester/logs/$DAY.log"; MLOG="$DATA/logs/$DAY.log"
 size() { vm "for %F in (\"$(winpath "$1")\") do @echo %~zF" 2>/dev/null | tr -d '\r[:space:]' | grep -E '^[0-9]+$' || echo 0; }
 TOFF="$(size "$TLOG")"; MOFF="$(size "$MLOG")"
-DEALS="zedmql_${NAME}_deals.csv"; COMMON_FILES="$(dirname "$DATA")/Common/Files"
+DEALS="zedmql_${NAME}_deals.csv"; EQUITY="zedmql_${NAME}_equity.csv"; COMMON_FILES="$(dirname "$DATA")/Common/Files"
 echo "== Backtest: $NAME $SYMBOL $PERIOD model=$MODEL $FROM -> $TO deposit=$DEPOSIT $CURRENCY (account $LOGIN @ $SERVER)"
-vm "del \"$(winpath "$DATA")\\zedmql_$NAME.htm\" \"$(winpath "$COMMON_FILES")\\$DEALS\" 2>nul & start \"\" /wait \"$(winpath "$VM_TERM")\" /config:\"$(winpath "$VM_INI")\"" &
+vm "del \"$(winpath "$DATA")\\zedmql_$NAME.htm\" \"$(winpath "$COMMON_FILES")\\$DEALS\" \"$(winpath "$COMMON_FILES")\\$EQUITY\" 2>nul & start \"\" /wait \"$(winpath "$VM_TERM")\" /config:\"$(winpath "$VM_INI")\"" &
 PID=$!
 START=$SECONDS
 while kill -0 "$PID" 2>/dev/null; do
@@ -176,6 +176,7 @@ fi
 scp -q "${SSH_OPTS[@]}" "$HOST:$TLOG" "$RUN_DIR/tester.log" 2>/dev/null || : > "$RUN_DIR/tester.log"
 scp -q "${SSH_OPTS[@]}" "$HOST:$MLOG" "$RUN_DIR/terminal.log" 2>/dev/null || : > "$RUN_DIR/terminal.log"
 scp -q "${SSH_OPTS[@]}" "$HOST:$COMMON_FILES/$DEALS" "$RUN_DIR/deals.csv" 2>/dev/null || rm -f "$RUN_DIR/deals.csv"
+scp -q "${SSH_OPTS[@]}" "$HOST:$COMMON_FILES/$EQUITY" "$RUN_DIR/equity.csv" 2>/dev/null || rm -f "$RUN_DIR/equity.csv"
 
 # Build manifest
 cat > "$RUN_DIR/manifest.json" <<EOF
@@ -206,7 +207,7 @@ EOF
 
 python3 "$SCRIPT_DIR/parse-tester-log.py" --tester-log "$RUN_DIR/tester.log" --tester-offset "$TOFF" \
   --terminal-log "$RUN_DIR/terminal.log" --terminal-offset "$MOFF" --deposit "$DEPOSIT" --currency "$CURRENCY" \
-  --run-dir "$RUN_DIR" \
+  --run-dir "$RUN_DIR" --deals-csv "$RUN_DIR/deals.csv" --equity-csv "$RUN_DIR/equity.csv" --report-html "$RUN_DIR/report.html" \
   --title "$NAME backtest" --info "$SYMBOL $PERIOD, model $MODEL, $FROM to $TO, deposit $DEPOSIT $CURRENCY, leverage $LEVERAGE" | tee "$RUN_DIR/summary.txt"
 STATUS=${PIPESTATUS[0]}
 echo "Saved in $RUN_DIR"

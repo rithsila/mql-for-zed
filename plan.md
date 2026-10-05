@@ -219,28 +219,28 @@ Artifacts can be absent when unavailable; the manifest must explain why.
 
 ### 2.4 Equity sampling
 
-- [ ] Add explicit helper lifecycle functions integrated into existing EA event handlers.
-- [ ] Capture timestamp, balance, equity, margin, and free margin.
-- [ ] Support inexpensive bar-based sampling.
-- [ ] Support time-interval sampling.
-- [ ] Add tick-based sampling as an explicit higher-cost option.
-- [ ] Sample near the start of `OnTick` so early returns do not skip collection.
-- [ ] Record initial and final observations.
-- [ ] Buffer writes where appropriate.
-- [ ] Keep raw samples and downsample only for display.
-- [ ] Disable instrumentation outside Strategy Tester.
-- [ ] Use run-specific filenames to prevent collisions.
+- [x] Add explicit helper lifecycle functions integrated into existing EA event handlers.
+- [x] Capture timestamp, balance, equity, margin, and free margin.
+- [x] Support inexpensive bar-based sampling.
+- [x] Support time-interval sampling.
+- [x] Add tick-based sampling as an explicit higher-cost option.
+- [x] Sample near the start of `OnTick` so early returns do not skip collection.
+- [x] Record initial and final observations.
+- [x] Buffer writes where appropriate.
+- [x] Keep raw samples and downsample only for display.
+- [x] Disable instrumentation outside Strategy Tester.
+- [x] Use run-specific filenames to prevent collisions.
 - [ ] Document multi-symbol and sparse-tick limitations.
-- [ ] Label sampled drawdown separately from native tester drawdown.
+- [x] Label sampled drawdown separately from native tester drawdown.
 
 ### Acceptance criteria
 
 - [x] Consecutive runs never overwrite each other.
 - [x] Each result identifies exact inputs and source snapshot.
 - [x] Material test-condition differences are visible.
-- [ ] Balance and equity curves cannot be confused.
+- [x] Balance and equity curves cannot be confused.
 - [x] Missing instrumentation yields an explicitly partial report.
-- [ ] Sampled equity is not presented as exact intrabar risk measurement.
+- [x] Sampled equity is not presented as exact intrabar risk measurement.
 
 ---
 
@@ -469,12 +469,12 @@ value || start || step || stop || enabled
 
 ### 5.2 `.set` language support
 
-- [ ] Add highlighting and comment support.
+- [x] Add highlighting and comment support.
 - [ ] Resolve the associated EA explicitly when multiple candidates exist.
-- [ ] Complete input names from the EA.
-- [ ] Show input type and source default on hover.
-- [ ] Diagnose unknown and duplicate inputs.
-- [ ] Validate literal values and enums.
+- [x] Complete input names from the EA.
+- [x] Show input type and source default on hover.
+- [x] Diagnose unknown and duplicate inputs.
+- [x] Validate literal values and enums.
 - [ ] Validate optimization ranges.
 - [ ] Support go-to-definition for input names.
 - [ ] Add generate-defaults command.

@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **M5 (Richer Evidence and Inputs: Equity Sampling and `.set` Language Support):**
+  - **Equity Sampling:** Added `ZedMqlInitEquity`, `ZedMqlSampleEquity`, and `ZedMqlDeinitEquity` to `ZedMqlStats.mqh` to capture timestamp, balance, equity, margin, and free margin at bar, tick, or time-interval intervals.
+  - Plotted sampled equity curves natively inside the generated HTML report and clearly distinguished sampled drawdown from native tester drawdown.
+  - **`.set` Language Support:** Added syntax highlighting for `.set` files in the Zed extension using `tree-sitter-ini`.
+  - Added language server features for `.set` files: autocompletion for parameter names, hover documentation for input types and defaults, and inline diagnostics checking for unknown parameters, duplicate parameters, and type mismatches based on the `input` definitions in the corresponding `.mq5` file.
 - **M3 (Immutable Run History & Structured Results):** 
   - Generates immutable run directories (`.mql/runs/<run-id>/`) containing exact test conditions: `manifest.json`, `inputs.set`, `tester.ini`, compiled `.ex5` binary hash, and execution logs.
   - Generates versioned `result.json` explicitly recording unavailable/partial metrics and metric provenance instead of returning unverified zero values.

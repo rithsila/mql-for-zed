@@ -39,7 +39,18 @@ def load_deals(path):
     return rows
 
 
-def write_report(path, title, info, deals, cur, stats):
+def load_equity(path):
+    rows = []
+    try:
+        with open(path, newline="", encoding="utf-8", errors="replace") as f:
+            for r in csv.DictReader(f):
+                rows.append({"t": int(r["time"]), "balance": float(r["balance"]), "equity": float(r["equity"])})
+    except (OSError, ValueError, KeyError):
+        return []
+    return rows
+
+
+def write_report(path, title, info, deals, cur, stats, equity_samples=None):
     bal, curve = 0.0, []
     for d in deals:
         bal += d["net"]
@@ -54,37 +65,67 @@ def write_report(path, title, info, deals, cur, stats):
         mdd_pct = max(mdd_pct, (peak - b) / peak * 100 if peak > 0 else 0)
     step = max(1, len(curve) // 1500)
     pts = curve[::step] + ([curve[-1]] if (len(curve) - 1) % step else [])
-    lo, hi = min(b for _, b in pts), max(b for _, b in pts)
-    t0, t1 = pts[0][0], pts[-1][0]
+    
+    eq_pts = []
+    sampled_mdd = 0.0
+    sampled_mdd_pct = 0.0
+    if equity_samples:
+        eq_peak = equity_samples[0]["equity"] if equity_samples else 0.0
+        for s in equity_samples:
+            eq_peak = max(eq_peak, s["equity"])
+            dd = max(0.0, eq_peak - s["equity"])
+            sampled_mdd = max(sampled_mdd, dd)
+            sampled_mdd_pct = max(sampled_mdd_pct, dd / eq_peak * 100 if eq_peak > 0 else 0)
+        
+        eq_step = max(1, len(equity_samples) // 1500)
+        eq_pts = [(s["t"], s["equity"]) for s in (equity_samples[::eq_step] + ([equity_samples[-1]] if (len(equity_samples) - 1) % eq_step else []))]
+        
+    all_b = [b for _, b in pts] + [e for _, e in eq_pts]
+    lo, hi = min(all_b) if all_b else 0, max(all_b) if all_b else 100
+    t0 = min(t for t, _ in pts + eq_pts) if pts or eq_pts else 0
+    t1 = max(t for t, _ in pts + eq_pts) if pts or eq_pts else 1
+    
     W, H, L, B = 900, 280, 70, 30
     xs = lambda t: L + (t - t0) / max(1, t1 - t0) * (W - L - 10)
     ys = lambda b: 10 + (hi - b) / max(1e-9, hi - lo) * (H - B - 10)
     poly = " ".join(f"{xs(t):.1f},{ys(b):.1f}" for t, b in pts)
+    
+    poly_eq = ""
+    if eq_pts:
+        poly_eq = " ".join(f"{xs(t):.1f},{ys(b):.1f}" for t, b in eq_pts)
+        
     day = lambda t: datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%d")
     def kpi(rows):
         return "".join(f"<tr><th>{html.escape(k)}</th><td>{html.escape(str(v))}</td></tr>" for k, v in rows)
     g = lambda k: float(stats.get(k, "nan")) if stats else float("nan")
     tester = [("Profit factor", f"{g('profit_factor'):.2f}"), ("Net profit", f"{g('profit'):.2f} {cur}"),
               ("Gross profit / loss", f"{g('gross_profit'):.2f} / {g('gross_loss'):.2f}"),
-              ("Equity drawdown", f"{g('equity_dd'):.2f} {cur} ({g('equity_dd_pct'):.2f}%)"),
+              ("Equity drawdown (native)", f"{g('equity_dd'):.2f} {cur} ({g('equity_dd_pct'):.2f}%)"),
               ("Recovery factor", f"{g('recovery_factor'):.2f}"), ("Sharpe", f"{g('sharpe'):.2f}"),
               ("Expected payoff", f"{g('expected_payoff'):.2f}"), ("Trades (tester)", f"{g('trades'):.0f}")] if stats else []
     own = [("Closing deals", len(closing)),
            ("Win rate", f"{len(wins) / len(closing) * 100:.1f}%" if closing else "n/a"),
            ("Average win / loss", f"{sum(wins) / len(wins):.2f} / {sum(losses) / len(losses):.2f}" if wins and losses else "n/a"),
            ("Largest win / loss", f"{max(wins):.2f} / {min(losses):.2f}" if wins and losses else "n/a"),
-           ("Balance drawdown (closed deals)", f"{mdd:.2f} {cur} ({mdd_pct:.2f}%)"),
-           ("Final balance", f"{curve[-1][1]:.2f} {cur}")]
+           ("Balance drawdown (closed deals)", f"{mdd:.2f} {cur} ({mdd_pct:.2f}%)")]
+    if equity_samples:
+        own.append(("Sampled equity drawdown", f"{sampled_mdd:.2f} {cur} ({sampled_mdd_pct:.2f}%)"))
+    own.append(("Final balance", f"{curve[-1][1]:.2f} {cur}"))
+    
+    svg_eq = f'<polyline fill="none" stroke="#2e7d32" stroke-width="1.0" opacity="0.8" points="{poly_eq}"/>' if poly_eq else ''
+    
     doc = f"""<!doctype html><meta charset="utf-8"><title>{html.escape(title)}</title>
 <style>body{{font:14px system-ui,sans-serif;margin:24px;max-width:960px;color:#222}}h1{{font-size:20px}}table{{border-collapse:collapse;margin:8px 24px 8px 0}}
 th{{text-align:left;font-weight:500;padding:3px 14px 3px 0;color:#555}}td{{padding:3px 0;font-variant-numeric:tabular-nums}}.row{{display:flex;flex-wrap:wrap}}svg{{background:#fafafa;border:1px solid #ddd}}small{{color:#777}}</style>
 <h1>{html.escape(title)}</h1><p>{html.escape(info)}</p>
 <div class="row"><table>{kpi(tester)}</table><table>{kpi(own)}</table></div>
-<h2 style="font-size:16px">Balance curve</h2>
-<svg width="{W}" height="{H}"><polyline fill="none" stroke="#1565c0" stroke-width="1.4" points="{poly}"/>
+<h2 style="font-size:16px">Balance &amp; Equity curve</h2>
+<svg width="{W}" height="{H}">
+{svg_eq}
+<polyline fill="none" stroke="#1565c0" stroke-width="1.4" points="{poly}"/>
 <text x="4" y="18" font-size="11">{hi:.0f}</text><text x="4" y="{H - B}" font-size="11">{lo:.0f}</text>
 <text x="{L}" y="{H - 10}" font-size="11">{day(t0)}</text><text x="{W - 80}" y="{H - 10}" font-size="11">{day(t1)}</text></svg>
-<p><small>Balance after each deal (not equity; floating P/L is not sampled). Statistics on the left come from the tester's own TesterStatistics(); the right column is computed from the deal list. Generated by zed-mql. Strategy Tester results are not a prediction of live performance.</small></p>"""
+<p><small>Blue line: Balance after each deal. Green line (if present): Sampled equity. Sampled equity is not an exact intrabar risk measurement. Statistics on the left come from the tester's own TesterStatistics(); the right column is computed from the deal list and sampled equity. Generated by zed-mql. Strategy Tester results are not a prediction of live performance.</small></p>"""
     with open(path, "w", encoding="utf-8") as f:
         f.write(doc)
 
@@ -99,6 +140,7 @@ def main():
     ap.add_argument("--currency", default="")
     ap.add_argument("--save-tester-segment")
     ap.add_argument("--deals-csv")
+    ap.add_argument("--equity-csv")
     ap.add_argument("--report-html")
     ap.add_argument("--run-dir")
     ap.add_argument("--title", default="Strategy Tester")
@@ -189,8 +231,9 @@ def main():
         print(f"Equity DD     : {g('equity_dd'):.2f} {cur}  ({g('equity_dd_pct'):.2f}%)")
         print(f"Recovery      : {g('recovery_factor'):.2f}   Sharpe {g('sharpe'):.2f}   Expected payoff {g('expected_payoff'):.2f}")
         deal_list = load_deals(a.deals_csv) if a.deals_csv else []
+        equity_samples = load_equity(a.equity_csv) if a.equity_csv else []
         if deal_list and a.report_html:
-            write_report(a.report_html, a.title, a.info, deal_list, cur, stats)
+            write_report(a.report_html, a.title, a.info, deal_list, cur, stats, equity_samples)
             print(f"Report        : {a.report_html}")
         elif a.report_html:
             print("Report        : not written (no deal list; update ZedMqlStats.mqh in the EA's include and rebuild)")

@@ -1,0 +1,4 @@
+name = "MQL Set"
+grammar = "ini"
+path_suffixes = ["set"]
+line_comments = [";"]

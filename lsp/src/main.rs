@@ -1,6 +1,7 @@
 mod compiler;
 mod index;
 mod lint;
+mod set_file;
 mod snippets;
 
 use index::{Index, Kind, Symbol};
@@ -237,7 +238,12 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
                     handle_notification(n, &mut docs, &mut index);
                     if let Some(uri) = uri {
                         if let Some((text, version)) = docs.get(&uri) {
-                            let lints = lint::check(text, &uri, &lint_config);
+                            let mut lints = lint::check(text, &uri, &lint_config);
+                            if let Some(path) = path_of(&uri) {
+                                if path.extension().is_some_and(|e| e == "set") {
+                                    lints.extend(set_file::check(text, &path));
+                                }
+                            }
                             let prev_lints = lints_by_uri.get(&uri);
                             let changed = match prev_lints {
                                 Some(prev) => prev != &lints,
@@ -289,6 +295,42 @@ fn handle_request(req: Request, docs: &HashMap<Url, (String, i32)>, index: &Inde
         HoverRequest::METHOD => {
             let p: HoverParams = serde_json::from_value(req.params).unwrap();
             let tdp = p.text_document_position_params;
+
+            if let Some(path) = path_of(&tdp.text_document.uri) {
+                if path.extension().is_some_and(|e| e == "set") {
+                    if let Some(text) = text_of(docs, &tdp.text_document.uri) {
+                        if let Some(line) = text.lines().nth(tdp.position.line as usize) {
+                            if let Some(eq_idx) = line.find('=') {
+                                let key = line[..eq_idx].trim();
+                                // if cursor is before the '='
+                                if (tdp.position.character as usize) <= eq_idx {
+                                    if let Some(inputs) =
+                                        set_file::get_mq5_inputs_for_set_file(&path)
+                                    {
+                                        if let Some(param) = inputs.iter().find(|i| i.name == key) {
+                                            return ok(serde_json::to_value(Hover {
+                                                contents: HoverContents::Markup(MarkupContent {
+                                                    kind: MarkupKind::Markdown,
+                                                    value: format!(
+                                                        "**{}**\n\nType: `{}`\n\nDefault: `{}`",
+                                                        param.name,
+                                                        param.type_name,
+                                                        param.default_value
+                                                    ),
+                                                }),
+                                                range: None,
+                                            })
+                                            .unwrap());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return ok(serde_json::Value::Null);
+                }
+            }
+
             let hit = text_of(docs, &tdp.text_document.uri)
                 .and_then(|t| word_at(&t, tdp.position))
                 .and_then(|w| index.symbols.get(&w));
@@ -331,25 +373,47 @@ fn handle_request(req: Request, docs: &HashMap<Url, (String, i32)>, index: &Inde
             ok(serde_json::to_value(locs).unwrap())
         }
         Completion::METHOD => {
-            let mut items: Vec<CompletionItem> = snippets::all_completion_items();
-            let symbols: Vec<CompletionItem> = index
-                .symbols
-                .values()
-                .filter_map(|v| v.first())
-                .map(|s| CompletionItem {
-                    label: s.name.clone(),
-                    kind: Some(completion_kind(s.kind)),
-                    detail: Some(s.signature.clone()),
-                    documentation: (!s.doc.is_empty()).then(|| {
-                        Documentation::MarkupContent(MarkupContent {
-                            kind: MarkupKind::Markdown,
-                            value: s.doc.clone(),
-                        })
-                    }),
-                    ..Default::default()
-                })
-                .collect();
-            items.extend(symbols);
+            let p: CompletionParams = serde_json::from_value(req.params).unwrap();
+            let mut items: Vec<CompletionItem> = vec![];
+
+            if let Some(path) = path_of(&p.text_document_position.text_document.uri) {
+                if path.extension().is_some_and(|e| e == "set") {
+                    if let Some(inputs) = set_file::get_mq5_inputs_for_set_file(&path) {
+                        items.extend(inputs.into_iter().map(|inp| CompletionItem {
+                            label: inp.name.clone(),
+                            kind: Some(CompletionItemKind::PROPERTY),
+                            detail: Some(format!(
+                                "{} (default: {})",
+                                inp.type_name, inp.default_value
+                            )),
+                            insert_text: Some(format!("{}=", inp.name)),
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            if items.is_empty() {
+                items.extend(snippets::all_completion_items());
+                let symbols: Vec<CompletionItem> = index
+                    .symbols
+                    .values()
+                    .filter_map(|v| v.first())
+                    .map(|s| CompletionItem {
+                        label: s.name.clone(),
+                        kind: Some(completion_kind(s.kind)),
+                        detail: Some(s.signature.clone()),
+                        documentation: (!s.doc.is_empty()).then(|| {
+                            Documentation::MarkupContent(MarkupContent {
+                                kind: MarkupKind::Markdown,
+                                value: s.doc.clone(),
+                            })
+                        }),
+                        ..Default::default()
+                    })
+                    .collect();
+                items.extend(symbols);
+            }
             ok(serde_json::to_value(CompletionResponse::Array(items)).unwrap())
         }
         _ => Response {

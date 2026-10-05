@@ -3,16 +3,27 @@
 //| Prints the Strategy Tester statistics as one log line that the   |
 //| zed-mql "MQL: Backtest" task reads. Add to your EA:              |
 //|   #include <ZedMqlStats.mqh>                                     |
-//|   double OnTester() { ZedMqlPrintStats(); ... }                  |
-//| It also writes the deal history to                               |
-//| <common>/Files/zedmql_<EA>_deals.csv for the HTML report.        |
-//| Only active inside the tester; has no effect on trading.        |
+//|                                                                  |
+//| In OnInit:                                                       |
+//|   ZedMqlInitEquity(ZEDMQL_SAMPLE_BAR);                           |
+//| In OnTick (at the very beginning):                               |
+//|   ZedMqlSampleEquity();                                          |
+//| In OnTester:                                                     |
+//|   ZedMqlPrintStats();                                            |
+//| In OnDeinit:                                                     |
+//|   ZedMqlDeinitEquity();                                          |
+//|                                                                  |
+//| It also writes the deal history and equity to                    |
+//| <common>/Files/zedmql_<EA>_deals.csv and _equity.csv for the     |
+//| HTML report. Only active inside the tester; has no effect on     |
+//| trading.                                                         |
 //+------------------------------------------------------------------+
 #ifndef ZED_MQL_STATS_MQH
 #define ZED_MQL_STATS_MQH
 
 void ZedMqlWriteDeals()
   {
+   if(!MQLInfoInteger(MQL_TESTER)) return;
    if(!HistorySelect(0,TimeCurrent()))
       return;
    string name="zedmql_"+MQLInfoString(MQL_PROGRAM_NAME)+"_deals.csv";
@@ -60,6 +71,86 @@ void ZedMqlPrintStats()
                TesterStatistics(STAT_SHARPE_RATIO),
                (int)TesterStatistics(STAT_TRADES));
    ZedMqlWriteDeals();
+  }
+
+enum ENUM_ZEDMQL_SAMPLE_MODE
+  {
+   ZEDMQL_SAMPLE_BAR,
+   ZEDMQL_SAMPLE_TICK,
+   ZEDMQL_SAMPLE_TIME
+  };
+
+string zedmql_equity_file = "";
+int zedmql_equity_handle = INVALID_HANDLE;
+ENUM_ZEDMQL_SAMPLE_MODE zedmql_sample_mode = ZEDMQL_SAMPLE_BAR;
+int zedmql_sample_interval = 0;
+datetime zedmql_last_sample_time = 0;
+int zedmql_sample_count = 0;
+
+void ZedMqlInitEquity(ENUM_ZEDMQL_SAMPLE_MODE mode = ZEDMQL_SAMPLE_BAR, int interval_seconds = 3600)
+  {
+   if(!MQLInfoInteger(MQL_TESTER)) return;
+   zedmql_sample_mode = mode;
+   zedmql_sample_interval = interval_seconds;
+   zedmql_equity_file = "zedmql_" + MQLInfoString(MQL_PROGRAM_NAME) + "_equity.csv";
+   zedmql_equity_handle = FileOpen(zedmql_equity_file, FILE_WRITE|FILE_COMMON|FILE_TXT|FILE_ANSI);
+   if(zedmql_equity_handle != INVALID_HANDLE)
+     {
+      FileWriteString(zedmql_equity_handle, "time,balance,equity,margin,free_margin\n");
+      zedmql_sample_count = 0;
+     }
+  }
+
+void ZedMqlSampleEquity()
+  {
+   if(!MQLInfoInteger(MQL_TESTER) || zedmql_equity_handle == INVALID_HANDLE) return;
+   
+   datetime t = TimeCurrent();
+   bool should_sample = false;
+   
+   if(zedmql_sample_mode == ZEDMQL_SAMPLE_TICK)
+      should_sample = true;
+   else if(zedmql_sample_mode == ZEDMQL_SAMPLE_BAR)
+     {
+      static datetime last_bar = 0;
+      datetime current_bar = (datetime)SeriesInfoInteger(_Symbol, _Period, SERIES_LASTBAR_DATE);
+      if(current_bar != last_bar)
+        {
+         should_sample = true;
+         last_bar = current_bar;
+        }
+     }
+   else if(zedmql_sample_mode == ZEDMQL_SAMPLE_TIME)
+     {
+      if(t >= zedmql_last_sample_time + zedmql_sample_interval)
+         should_sample = true;
+     }
+     
+   if(should_sample)
+     {
+      double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+      double eq = AccountInfoDouble(ACCOUNT_EQUITY);
+      double mar = AccountInfoDouble(ACCOUNT_MARGIN);
+      double fmar = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
+      
+      FileWriteString(zedmql_equity_handle, StringFormat("%I64d,%.2f,%.2f,%.2f,%.2f\n", 
+                                                         (long)t, bal, eq, mar, fmar));
+      zedmql_last_sample_time = t;
+      zedmql_sample_count++;
+      
+      // Buffer file writes for performance
+      if(zedmql_sample_count % 100 == 0)
+         FileFlush(zedmql_equity_handle);
+     }
+  }
+
+void ZedMqlDeinitEquity()
+  {
+   if(zedmql_equity_handle != INVALID_HANDLE)
+     {
+      FileClose(zedmql_equity_handle);
+      zedmql_equity_handle = INVALID_HANDLE;
+     }
   }
 
 #endif
