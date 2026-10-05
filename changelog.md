@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **M6 (Optimization Task):**
+  - **Parameter Validation:** Added strict bounds checking for optimization fields (`value||start||step||stop||Y`) within `.set` files in the language server. Emits diagnostics for zero-steps, invalid ranges (e.g. `start > stop` when `step > 0`), and type mismatches.
+  - **Feasibility Script:** Added `scripts/optimize-mql-remote.sh` demonstrating reliable optimization pass collection natively via MT5 XML exports, safely avoiding file-collision risks from parallel agents.
 - **M5 (Richer Evidence and Inputs: Equity Sampling and `.set` Language Support):**
   - **Equity Sampling:** Added `ZedMqlInitEquity`, `ZedMqlSampleEquity`, and `ZedMqlDeinitEquity` to `ZedMqlStats.mqh` to capture timestamp, balance, equity, margin, and free margin at bar, tick, or time-interval intervals.
   - Plotted sampled equity curves natively inside the generated HTML report and clearly distinguished sampled drawdown from native tester drawdown.

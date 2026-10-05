@@ -2,7 +2,7 @@ use lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub struct InputParam {
@@ -78,10 +78,9 @@ pub fn check(text: &str, set_path: &Path) -> Vec<Diagnostic> {
             }
             if let Some(eq_idx) = line.find('=') {
                 let key = line[..eq_idx].trim();
-                let mut value_part = line[eq_idx + 1..].trim();
-                if let Some(pipe_idx) = value_part.find("||") {
-                    value_part = value_part[..pipe_idx].trim();
-                }
+                let full_value_str = line[eq_idx + 1..].trim();
+                let parts: Vec<&str> = full_value_str.split("||").map(|s| s.trim()).collect();
+                let value_part = parts[0];
 
                 let start = line.find(key).unwrap_or(0);
                 if let Some(prev_line) = seen_keys.insert(key.to_string(), i) {
@@ -110,11 +109,14 @@ pub fn check(text: &str, set_path: &Path) -> Vec<Diagnostic> {
                             || param.type_name.contains("char");
                         if is_numeric {
                             if value_part.parse::<f64>().is_err() {
-                                let start = line.find(value_part).unwrap_or(eq_idx + 1);
+                                let start_pos = line.find(value_part).unwrap_or(eq_idx + 1);
                                 diagnostics.push(Diagnostic {
                                     range: Range::new(
-                                        Position::new(i as u32, start as u32),
-                                        Position::new(i as u32, (start + value_part.len()) as u32),
+                                        Position::new(i as u32, start_pos as u32),
+                                        Position::new(
+                                            i as u32,
+                                            (start_pos + value_part.len()) as u32,
+                                        ),
                                     ),
                                     severity: Some(DiagnosticSeverity::WARNING),
                                     message: format!(
@@ -124,6 +126,76 @@ pub fn check(text: &str, set_path: &Path) -> Vec<Diagnostic> {
                                     ..Default::default()
                                 });
                             }
+
+                            // Optimization fields validation
+                            if parts.len() == 5 {
+                                let start_val = parts[1].parse::<f64>();
+                                let step_val = parts[2].parse::<f64>();
+                                let stop_val = parts[3].parse::<f64>();
+                                let enabled = parts[4].to_uppercase() == "Y";
+
+                                if enabled {
+                                    if let (Ok(start_num), Ok(step_num), Ok(stop_num)) =
+                                        (&start_val, &step_val, &stop_val)
+                                    {
+                                        if *step_num == 0.0 {
+                                            let start_pos =
+                                                line.find(parts[2]).unwrap_or(eq_idx + 1);
+                                            diagnostics.push(Diagnostic {
+                                                range: Range::new(
+                                                    Position::new(i as u32, start_pos as u32),
+                                                    Position::new(
+                                                        i as u32,
+                                                        (start_pos + parts[2].len()) as u32,
+                                                    ),
+                                                ),
+                                                severity: Some(DiagnosticSeverity::WARNING),
+                                                message: format!(
+                                                    "Optimization step for '{}' cannot be 0.",
+                                                    key
+                                                ),
+                                                ..Default::default()
+                                            });
+                                        } else if *step_num > 0.0 && start_num > stop_num {
+                                            let start_pos =
+                                                line.find(parts[1]).unwrap_or(eq_idx + 1);
+                                            diagnostics.push(Diagnostic {
+                                                range: Range::new(
+                                                    Position::new(i as u32, start_pos as u32),
+                                                    Position::new(i as u32, line.len() as u32),
+                                                ),
+                                                severity: Some(DiagnosticSeverity::WARNING),
+                                                message: format!("Invalid optimization range for '{}': start > stop with positive step.", key),
+                                                ..Default::default()
+                                            });
+                                        } else if *step_num < 0.0 && start_num < stop_num {
+                                            let start_pos =
+                                                line.find(parts[1]).unwrap_or(eq_idx + 1);
+                                            diagnostics.push(Diagnostic {
+                                                range: Range::new(
+                                                    Position::new(i as u32, start_pos as u32),
+                                                    Position::new(i as u32, line.len() as u32),
+                                                ),
+                                                severity: Some(DiagnosticSeverity::WARNING),
+                                                message: format!("Invalid optimization range for '{}': start < stop with negative step.", key),
+                                                ..Default::default()
+                                            });
+                                        }
+                                    } else {
+                                        let start_pos =
+                                            line.find(full_value_str).unwrap_or(eq_idx + 1);
+                                        diagnostics.push(Diagnostic {
+                                            range: Range::new(
+                                                Position::new(i as u32, start_pos as u32),
+                                                Position::new(i as u32, (start_pos + full_value_str.len()) as u32),
+                                            ),
+                                            severity: Some(DiagnosticSeverity::WARNING),
+                                            message: format!("Optimization fields for numeric parameter '{}' must be numbers.", key),
+                                            ..Default::default()
+                                        });
+                                    }
+                                }
+                            }
                         } else if param.type_name == "bool" {
                             let v_lower = value_part.to_lowercase();
                             if v_lower != "true"
@@ -131,11 +203,11 @@ pub fn check(text: &str, set_path: &Path) -> Vec<Diagnostic> {
                                 && v_lower != "0"
                                 && v_lower != "1"
                             {
-                                let start = line.find(value_part).unwrap_or(eq_idx + 1);
+                                let start_pos = line.find(value_part).unwrap_or(eq_idx + 1);
                                 diagnostics.push(Diagnostic {
                                     range: Range::new(
-                                        Position::new(i as u32, start as u32),
-                                        Position::new(i as u32, (start + value_part.len()) as u32),
+                                        Position::new(i as u32, start_pos as u32),
+                                        Position::new(i as u32, (start_pos + value_part.len()) as u32),
                                     ),
                                     severity: Some(DiagnosticSeverity::WARNING),
                                     message: format!("Type mismatch: '{}' expects a boolean value (true/false/0/1).", key),
@@ -145,11 +217,11 @@ pub fn check(text: &str, set_path: &Path) -> Vec<Diagnostic> {
                         }
                     }
                 } else {
-                    let start = line.find(key).unwrap_or(0);
+                    let start_pos = line.find(key).unwrap_or(0);
                     diagnostics.push(Diagnostic {
                         range: Range::new(
-                            Position::new(i as u32, start as u32),
-                            Position::new(i as u32, (start + key.len()) as u32),
+                            Position::new(i as u32, start_pos as u32),
+                            Position::new(i as u32, (start_pos + key.len()) as u32),
                         ),
                         severity: Some(DiagnosticSeverity::WARNING),
                         message: format!("Unknown parameter '{}'. This will be ignored by the tester unless it exists in the EA.", key),

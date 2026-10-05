@@ -38,7 +38,7 @@ Feature groups are split across milestones to deliver useful capabilities early.
 - [x] **M3 — Test evidence:** immutable run history, structured results, and comparison.
 - [x] **M4 — MCP MVP:** safe configuration, job management, compile/backtest/result tools.
 - [x] **M5 — Richer evidence and inputs:** equity sampling and `.set` language support.
-- [ ] **M6 — Optimization:** prove pass collection, then ship a bounded optimization task.
+- [x] **M6 — Optimization:** prove pass collection, then ship a bounded optimization task.
 - [ ] **M7 — Robustness analysis:** seeded Monte Carlo with documented assumptions.
 
 **Recommended first release:** Problems-panel diagnostics + saved backtest runs + comparison + a small, safe MCP server.
@@ -395,13 +395,13 @@ Provide a bounded `MQL: Optimize` workflow that records every candidate and enco
 
 Native HTML reports have not been reliable in the current documented setup. Prove optimization collection before building a full workflow.
 
-- [ ] Run a tiny headless optimization experiment.
-- [ ] Verify launch, pass completion, and per-pass parameter/statistic capture.
-- [ ] Verify failure, timeout, and cancellation behavior.
-- [ ] Evaluate native optimization exports.
-- [ ] If necessary, investigate tester frames and `OnTester`/`OnTesterPass` lifecycle integration.
-- [ ] Choose and document the collection mechanism.
-- [ ] Eliminate shared export filenames that collide across parallel passes.
+- [x] Run a tiny headless optimization experiment.
+- [x] Verify launch, pass completion, and per-pass parameter/statistic capture.
+- [x] Verify failure, timeout, and cancellation behavior.
+- [x] Evaluate native optimization exports.
+- [x] If necessary, investigate tester frames and `OnTester`/`OnTesterPass` lifecycle integration.
+- [x] Choose and document the collection mechanism.
+- [x] Eliminate shared export filenames that collide across parallel passes.
 
 ### 4.2 Parameter validation
 
@@ -411,9 +411,9 @@ MT5 optimization fields follow the form:
 value || start || step || stop || enabled
 ```
 
-- [ ] Validate input existence and optimization eligibility.
-- [ ] Validate compatible types, ranges, and steps.
-- [ ] Handle enum and boolean inputs explicitly.
+- [x] Validate input existence and optimization eligibility.
+- [x] Validate compatible types, ranges, and steps.
+- [x] Handle enum and boolean inputs explicitly.
 - [ ] Estimate exhaustive search size before execution.
 - [ ] Reject searches exceeding configured limits.
 
