@@ -13,7 +13,6 @@ Thumbs.db
 *~
 lsp/target/
 GUIDE.md
-/plan.md
 *.iml
 *.ipr
 *.iws
@@ -21,3 +20,4 @@ GUIDE.md
 # Fetched/built by Zed
 /grammars/
 extension.wasm
+mql-mcp/target/
