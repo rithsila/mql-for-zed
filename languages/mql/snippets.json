@@ -1,0 +1,174 @@
+{
+  "OnInit": {
+    "prefix": "OnInit",
+    "body": [
+      "int OnInit()",
+      "{",
+      "   ${1:// Initialization code}",
+      "   return(INIT_SUCCEEDED);",
+      "}"
+    ],
+    "description": "Expert Advisor initialization event handler skeleton"
+  },
+  "OnTick": {
+    "prefix": "OnTick",
+    "body": [
+      "void OnTick()",
+      "{",
+      "   ${1:// Tick handling logic}",
+      "}"
+    ],
+    "description": "Expert Advisor new-tick event handler skeleton"
+  },
+  "OnDeinit": {
+    "prefix": "OnDeinit",
+    "body": [
+      "void OnDeinit(const int reason)",
+      "{",
+      "   ${1:// Cleanup code}",
+      "}"
+    ],
+    "description": "Expert Advisor deinitialization event handler skeleton"
+  },
+  "EA Skeleton": {
+    "prefix": "ea-skeleton",
+    "body": [
+      "//+------------------------------------------------------------------+",
+      "//| Expert initialization function                                   |",
+      "//+------------------------------------------------------------------+",
+      "int OnInit()",
+      "{",
+      "   ${1:// Initialization code}",
+      "   return(INIT_SUCCEEDED);",
+      "}",
+      "",
+      "//+------------------------------------------------------------------+",
+      "//| Expert deinitialization function                                 |",
+      "//+------------------------------------------------------------------+",
+      "void OnDeinit(const int reason)",
+      "{",
+      "   ${2:// Deinitialization code}",
+      "}",
+      "",
+      "//+------------------------------------------------------------------+",
+      "//| Expert tick function                                             |",
+      "//+------------------------------------------------------------------+",
+      "void OnTick()",
+      "{",
+      "   ${3:// Tick code}",
+      "}"
+    ],
+    "description": "Complete Expert Advisor skeleton with OnInit, OnDeinit, and OnTick handlers"
+  },
+  "CTrade Setup": {
+    "prefix": "trade-setup",
+    "body": [
+      "#include <Trade\\Trade.mqh>",
+      "",
+      "CTrade trade;",
+      "",
+      "int OnInit()",
+      "{",
+      "   trade.SetExpertMagicNumber(${1:123456});",
+      "   trade.SetDeviationInPoints(${2:10});",
+      "   trade.SetTypeFilling(ORDER_FILLING_FOK);",
+      "   return(INIT_SUCCEEDED);",
+      "}"
+    ],
+    "description": "Safe CTrade setup with magic number, deviation, and filling type"
+  },
+  "Indicator Initialization": {
+    "prefix": "indicator-init",
+    "body": [
+      "int handle_ma = INVALID_HANDLE;",
+      "",
+      "int OnInit()",
+      "{",
+      "   handle_ma = iMA(_Symbol, _Period, ${1:14}, 0, MODE_SMA, PRICE_CLOSE);",
+      "   if(handle_ma == INVALID_HANDLE)",
+      "   {",
+      "      Print(\"Failed to create indicator handle: \", GetLastError());",
+      "      return(INIT_FAILED);",
+      "   }",
+      "   return(INIT_SUCCEEDED);",
+      "}",
+      "",
+      "void OnDeinit(const int reason)",
+      "{",
+      "   if(handle_ma != INVALID_HANDLE)",
+      "   {",
+      "      IndicatorRelease(handle_ma);",
+      "      handle_ma = INVALID_HANDLE;",
+      "   }",
+      "}"
+    ],
+    "description": "Initializes an indicator handle in OnInit, checks for INVALID_HANDLE, and releases it in OnDeinit"
+  },
+  "Safe CopyBuffer Pattern": {
+    "prefix": "copy-buffer",
+    "body": [
+      "double buffer[];",
+      "ArraySetAsSeries(buffer, true);",
+      "int copied = CopyBuffer(${1:handle_ma}, 0, 0, ${2:3}, buffer);",
+      "if(copied <= 0)",
+      "{",
+      "   Print(\"Failed to copy indicator buffer: \", GetLastError());",
+      "   return;",
+      "}",
+      "double val = buffer[0];"
+    ],
+    "description": "Sets dynamic array as series, copies buffer, and validates count > 0 before accessing elements"
+  },
+  "Inspect Trade Result": {
+    "prefix": "trade-check",
+    "body": [
+      "if(trade.Buy(${1:0.1}))",
+      "{",
+      "   if(trade.ResultRetcode() == TRADE_RETCODE_DONE)",
+      "   {",
+      "      Print(\"Trade executed successfully. Ticket: \", trade.ResultOrder());",
+      "   }",
+      "   else",
+      "   {",
+      "      Print(\"Order submitted with retcode: \", trade.ResultRetcode(), \" (\", trade.ResultRetcodeDescription(), \")\");",
+      "   }",
+      "}",
+      "else",
+      "{",
+      "   Print(\"Trade execution failed with retcode: \", trade.ResultRetcode(), \" (\", trade.ResultRetcodeDescription(), \")\");",
+      "}"
+    ],
+    "description": "Executes trade and inspects actual result return code (TRADE_RETCODE_DONE)"
+  },
+  "New Bar Detection": {
+    "prefix": "new-bar",
+    "body": [
+      "bool IsNewBar()",
+      "{",
+      "   static datetime last_bar_time = 0;",
+      "   datetime current_bar_time = iTime(_Symbol, _Period, 0);",
+      "   if(current_bar_time == 0)",
+      "      return(false);",
+      "",
+      "   if(current_bar_time != last_bar_time)",
+      "   {",
+      "      last_bar_time = current_bar_time;",
+      "      return(true);",
+      "   }",
+      "   return(false);",
+      "}"
+    ],
+    "description": "Detects open of a new bar on current symbol and timeframe using iTime"
+  },
+  "OnTester": {
+    "prefix": "OnTester",
+    "body": [
+      "double OnTester()",
+      "{",
+      "   ${1:// Custom optimization criterion}",
+      "   return(0.0);",
+      "}"
+    ],
+    "description": "Strategy Tester custom criterion calculation handler"
+  }
+}

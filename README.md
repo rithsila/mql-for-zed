@@ -88,6 +88,68 @@ Checks are debounced; a later edit/save or changed source snapshot makes an olde
 
 To finish the **Zed UI check**, first confirm Zed is running the newly built server, not the previously downloaded `mql-lsp-v0.1.1`: put the current build on Zed's `PATH` as described in [Install](#as-a-dev-extension), restart the language server, then inspect the running `mql-lsp` process path or the Zed log. In a disposable workspace, create `EA.mq5` that includes `Include Test.mqh`; give the header a first-line `//###<EA.mq5>` marker. Introduce an unresolved symbol in the header and save it, then open Problems: the error should open the local header at the reported position. Correct the symbol and save again: the error should disappear. **This exercise sends the workspace's MQL source to the configured Windows host**; do it only when you intend to run a remote syntax check. Do not use the Compile or Backtest tasks for this check.
 
+### Local EA lint rules
+
+`mql-lsp` includes conservative, local static analysis rules running directly in the editor as you type without requiring a Windows VM or SSH connection. Findings appear in Zed's Problems panel with the source `zed-mql-lint`, distinct from `MetaEditor` compiler diagnostics so neither erases the other.
+
+#### Initial rules
+
+| Rule ID | Severity | Description |
+|---|---|---|
+| `ignored-trade-result` | Warning | Ignored return value from direct `OrderSend()` or known `CTrade` calls (`Buy`, `Sell`, `PositionOpen`, etc.). |
+| `uninspected-trade-result` | Warning | API boolean return value treated as execution success without inspecting actual return codes (e.g. `ResultRetcode() == TRADE_RETCODE_DONE`). |
+| `unchecked-copy-buffer` | Warning | Unchecked element count returned from `CopyBuffer()` / `CopyRates()` before consuming requested data buffers. |
+| `unchecked-indicator-handle` | Warning | Indicator handle initialized without checking for `INVALID_HANDLE`. |
+| `indicator-in-ontick` | Warning | Indicator handle creation repeatedly inside `OnTick()`, which leaks handles and degrades execution performance. |
+
+#### Rule configuration
+
+Linting is enabled by default. You can enable or disable linting globally, disable specific rules, or override rule severities in Zed's `settings.json`:
+
+```json
+{
+  "lsp": {
+    "mql-lsp": {
+      "initialization_options": {
+        "lint": {
+          "enabled": true,
+          "rules": {
+            "ignored-trade-result": { "enabled": true, "severity": "error" },
+            "indicator-in-ontick": { "enabled": false }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Allowed severity values are `"error"`, `"warning"`, `"information"`, and `"hint"`.
+
+#### Inline suppression
+
+Suppress specific findings inline on the violation line or directly above it with an explanatory reason:
+
+```mql5
+// zed-mql-lint: disable ignored-trade-result Fire-and-forget order in test EA
+trade.Buy(0.1);
+```
+
+### MQL5 Snippets
+
+Standard lifecycle handlers and safe idioms are provided via LSP completion and `languages/mql/snippets.json`:
+
+- `OnInit`: Initialization handler skeleton returning `INIT_SUCCEEDED`.
+- `OnTick`: Tick handler skeleton.
+- `OnDeinit`: Deinitialization handler with cleanup code.
+- `ea-skeleton`: Full Expert Advisor lifecycle skeleton (`OnInit`, `OnDeinit`, `OnTick`).
+- `trade-setup`: Safe `CTrade` setup configuring magic number, slippage deviation, and filling type.
+- `indicator-init`: Safe indicator creation with `INVALID_HANDLE` validation and release in `OnDeinit`.
+- `copy-buffer`: Safe `CopyBuffer` pattern with series array and returned element count validation.
+- `trade-check`: Trade execution inspecting `ResultRetcode()` and logging ticket numbers or error descriptions.
+- `new-bar`: Safe `IsNewBar()` helper function detecting bar boundaries using `iTime`.
+- `OnTester`: Strategy Tester optimization handler skeleton.
+
 ## Compile and syntax check
 
 MetaEditor only runs on Windows, so compiling means running it on a Windows machine (a VM or another PC) that your Mac or Linux box can reach over SSH. The scripts copy your workspace's `.mq5` and `.mqh` files there with `tar` over SSH, so relative `#include`s resolve, run `MetaEditor64.exe /compile`, and print the errors as `path:line:col: error: message` lines you can click in Zed's terminal. A compile takes about two seconds.

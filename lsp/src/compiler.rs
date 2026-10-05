@@ -253,6 +253,13 @@ impl Publications {
             by_entry: HashMap::new(),
         }
     }
+    pub fn get(&self, uri: &Url) -> Vec<Diagnostic> {
+        self.by_entry
+            .values()
+            .filter_map(|m| m.get(uri))
+            .flat_map(|v| v.iter().cloned())
+            .collect()
+    }
     pub fn apply(
         &mut self,
         entry: PathBuf,

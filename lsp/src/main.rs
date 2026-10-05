@@ -1,5 +1,7 @@
 mod compiler;
 mod index;
+mod lint;
+mod snippets;
 
 use index::{Index, Kind, Symbol};
 use lsp_server::{Connection, Message, Notification, Request, Response};
@@ -145,9 +147,18 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     } else {
         None
     };
+
+    let lint_config: lint::Config = init
+        .initialization_options
+        .as_ref()
+        .and_then(|v| v.get("lint"))
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
     let mut docs: HashMap<Url, (String, i32)> = HashMap::new();
     let mut revisions: HashMap<Url, u64> = HashMap::new();
     let mut publications = compiler::Publications::new();
+    let mut lints_by_uri: HashMap<Url, Vec<Diagnostic>> = HashMap::new();
     let mut latest_entry: HashMap<PathBuf, u64> = HashMap::new();
     let mut next_check = 0u64;
     let mut source_revision = 0u64;
@@ -163,7 +174,10 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
                 match done.result {
                     Ok(result) => {
                         if let Some(updates) = publications.apply(done.save.entry, result) {
-                            for update in updates {
+                            for mut update in updates {
+                                if let Some(lints) = lints_by_uri.get(&update.uri) {
+                                    update.diagnostics.extend(lints.iter().cloned());
+                                }
                                 conn.sender.send(Message::Notification(Notification::new(
                                     PublishDiagnostics::METHOD.to_string(),
                                     update,
@@ -222,6 +236,30 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
                     let uri = document_uri(&n);
                     handle_notification(n, &mut docs, &mut index);
                     if let Some(uri) = uri {
+                        if let Some((text, version)) = docs.get(&uri) {
+                            let lints = lint::check(text, &uri, &lint_config);
+                            let prev_lints = lints_by_uri.get(&uri);
+                            let changed = match prev_lints {
+                                Some(prev) => prev != &lints,
+                                None => !lints.is_empty(),
+                            };
+                            if changed {
+                                lints_by_uri.insert(uri.clone(), lints.clone());
+                                let mut combined = lints;
+                                combined.extend(publications.get(&uri));
+                                let _ = conn.sender.send(Message::Notification(Notification::new(
+                                    PublishDiagnostics::METHOD.to_string(),
+                                    PublishDiagnosticsParams {
+                                        uri: uri.clone(),
+                                        diagnostics: combined,
+                                        version: Some(*version),
+                                    },
+                                )));
+                            }
+                        } else {
+                            lints_by_uri.remove(&uri);
+                        }
+
                         *revisions.entry(uri).or_default() += 1;
                         source_revision += 1;
                     }
@@ -293,7 +331,8 @@ fn handle_request(req: Request, docs: &HashMap<Url, (String, i32)>, index: &Inde
             ok(serde_json::to_value(locs).unwrap())
         }
         Completion::METHOD => {
-            let items: Vec<CompletionItem> = index
+            let mut items: Vec<CompletionItem> = snippets::all_completion_items();
+            let symbols: Vec<CompletionItem> = index
                 .symbols
                 .values()
                 .filter_map(|v| v.first())
@@ -310,6 +349,7 @@ fn handle_request(req: Request, docs: &HashMap<Url, (String, i32)>, index: &Inde
                     ..Default::default()
                 })
                 .collect();
+            items.extend(symbols);
             ok(serde_json::to_value(CompletionResponse::Array(items)).unwrap())
         }
         _ => Response {
