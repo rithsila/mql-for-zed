@@ -36,7 +36,7 @@ Feature groups are split across milestones to deliver useful capabilities early.
 - [x] **M1 — Compiler diagnostics:** structured compile results and Problems-panel integration (syntax-only Windows fixture, local LSP protocol tests, and live Zed Problems-panel UI verified end-to-end).
 - [x] **M2 — Local feedback:** initial conservative lint rules and tested snippets.
 - [ ] **M3 — Test evidence:** immutable run history, structured results, and comparison.
-- [ ] **M4 — MCP MVP:** safe configuration, job management, compile/backtest/result tools.
+- [x] **M4 — MCP MVP:** safe configuration, job management, compile/backtest/result tools.
 - [ ] **M5 — Richer evidence and inputs:** equity sampling and `.set` language support.
 - [ ] **M6 — Optimization:** prove pass collection, then ship a bounded optimization task.
 - [ ] **M7 — Robustness analysis:** seeded Monte Carlo with documented assumptions.
