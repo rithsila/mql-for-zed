@@ -17,6 +17,7 @@ MQL5 only. MQL4 is out of scope.
 | Strategy Tester backtest from a Zed task (compile, deploy, run on the Windows machine, summary in the terminal) | yes, see "Backtest" below |
 | Compile on macOS locally (Wine) | no (MetaEditor hangs when run headless under Wine) |
 | Compiler diagnostics in the Problems panel | opt-in remote syntax check on save (verified in Zed Problems panel) |
+| AI Agent Integration (MCP Server) | yes, via the `mql-mcp` binary |
 
 ## Install
 
@@ -307,6 +308,13 @@ Zed task ──► scripts/compile-mql.sh ──► tar over ssh ──► MetaE
 - `lsp/` is the language server (Rust).
 - `scripts/` holds the compile scripts and the task template.
 - `languages/mql` provides syntax highlighting and the outline, using the upstream `tree-sitter-cpp` grammar (pinned in `extension.toml`).
+
+### AI Agent Integration (MCP)
+
+The project includes a native Rust **MCP Server** (`mql-mcp`) designed to let AI agents safely interact with MQL5 tools. It provides tools for syntax checking, compiling, and launching bounded asynchronous backtests without letting the agent execute arbitrary shell commands. It tracks Job IDs and pollable states so that long-running backtests can survive client disconnections.
+
+To start the server, you can run:
+`cargo run --bin mql-mcp`
 
 ## Contributing
 

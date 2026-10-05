@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- MCP Server (`mql-mcp`) implemented in Rust for AI agent integration, exposing `mql_compile`, `mql_backtest`, and job management tools without exposing arbitrary shell execution.
+
 
 - Local Expert Advisor linting in `mql-lsp` (Milestone M2), running purely locally without requiring a Windows VM or SSH connection:
   - Conservative, high-signal rules: `ignored-trade-result` (unhandled return values from direct `OrderSend` or `CTrade` calls), `uninspected-trade-result` (boolean return value checked without inspecting execution results/retcode), `unchecked-copy-buffer` (unverified element count from `CopyBuffer`/`CopyRates` before accessing buffers), `unchecked-indicator-handle` (unverified indicator initialization against `INVALID_HANDLE`), and `indicator-in-ontick` (warning against repeated indicator construction inside `OnTick()`).
@@ -41,6 +43,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.1.2] - 2026-10-02
 
 ### Added
+- MCP Server (`mql-mcp`) implemented in Rust for AI agent integration, exposing `mql_compile`, `mql_backtest`, and job management tools without exposing arbitrary shell execution.
+
 
 - `languages/mql/runnables.scm` — a gutter ▶ next to `OnInit`, `OnTick`, `OnStart` and `OnCalculate` that offers the compile and syntax-check tasks (tag `mql5`).
 - Deploy step in `scripts/compile-mql-remote.sh`: after a successful compile the `.ex5` is copied into `MQL5/Experts/<workspace>/...` on the VM (needs `MQL_VM_MQL5_ROOT`) and in a local MetaTrader if found, so it appears in the Strategy Tester. Controlled by `MQL_DEPLOY` (default `1`, `0` disables) and `MQL_LOCAL_MT5_MQL5`.
@@ -59,6 +63,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 First release with the `mql-lsp` language server and Windows-over-SSH compile tasks (`v0.1.0` was tagged with the same code but lacked the Intel macOS server asset).
 
 ### Added
+- MCP Server (`mql-mcp`) implemented in Rust for AI agent integration, exposing `mql_compile`, `mql_backtest`, and job management tools without exposing arbitrary shell execution.
+
 
 - `scripts/mql-compile-helper.swift` — native arm64 Swift binary that initialises `NSApplication` before spawning Wine, providing the Cocoa event loop required by Wine's macOS display driver (`winemac.drv`) for headless MetaEditor compilation.
 - `implement_plan.md` — detailed implementation plan for the MQL compile feature, covering a local Wine backend (macOS + Rosetta 2) and a remote Windows VM backend, shared log parser design, Zed task integration, and path-translation strategy.
@@ -95,6 +101,8 @@ First release with the `mql-lsp` language server and Windows-over-SSH compile ta
 ## [0.1.0] - 2026-09-18
 
 ### Added
+- MCP Server (`mql-mcp`) implemented in Rust for AI agent integration, exposing `mql_compile`, `mql_backtest`, and job management tools without exposing arbitrary shell execution.
+
 
 - Initial release of MQL (MetaQuotes Language) extension for Zed editor.
 - Tree-sitter grammar for MQL4/MQL5 syntax parsing.
