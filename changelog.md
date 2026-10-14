@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Bilingual Smart Hover (English & Khmer):**
+  - Added configurable bilingual smart hover documentation in `mql-lsp` with independent language toggles (`hover.languages.english`, `hover.languages.khmer`), primary language ordering (`hover.primaryLanguage`: `"en"` | `"km"`), facts-only mode (`hover.showDocumentation: false`), and a master disable switch (`hover.enabled`).
+  - Implemented structured comment parsing supporting `// @en` and `// @km` doc tags with continuation lines, paragraph break preservation, and conservative script classification for untagged legacy comments to eliminate language leakage.
+  - Added curated Khmer translations for prioritized MQL5 built-in functions in `lsp/data/builtins.json` (`OrderSend`, `OrderSendAsync`, `OrderCheck`, `OrdersTotal`, `PositionsTotal`, `PositionSelect`, `SymbolInfoDouble`, `SymbolInfoInteger`, `AccountInfoDouble`, `CopyRates`, `CopyBuffer`, `MathAbs`, `HistorySelect`, `iMA`, `Print`, `Alert`, `Comment`).
+  - Added 0-based UTF-16 position and range calculations (`word_range_at`) handling multi-byte and surrogate pairs accurately for editor hover highlighting.
+  - Implemented unified hover formatting for MQL5 symbols and `.set` input parameters with source provenance, multi-declaration tracking, and localized UI labels.
 - **M6 (Optimization Task):**
   - **Parameter Validation:** Added strict bounds checking for optimization fields (`value||start||step||stop||Y`) within `.set` files in the language server. Emits diagnostics for zero-steps, invalid ranges (e.g. `start > stop` when `step > 0`), and type mismatches.
   - **Limit Checking:** Added `scripts/check-opt-limits.py` to calculate exhaustive search size and enforce `MQL_OPT_MAX_PASSES` limits.

@@ -11,7 +11,8 @@ MQL5 only. MQL4 is out of scope.
 | Feature | Status |
 |---|---|
 | Syntax highlighting and outline (`.mq5`, `.mqh`) | yes |
-| Hover docs for ~130 common built-ins (`OrderSend`, `iMA`, `CopyRates`, ...) | yes |
+| Bilingual smart hover docs (English / Khmer / bilingual / facts-only) with UTF-16 precision | yes |
+| Hover docs for ~130 common built-ins (`OrderSend`, `iMA`, `CopyRates`, ...) with curated Khmer entries | yes |
 | Hover, completion and go-to-definition for the standard library (`CTrade`, `CArrayObj`, ...) and your own workspace | yes |
 | Compile and syntax check from Zed tasks, with clickable `file:line:col` errors | yes, via a Windows machine over SSH (see below) |
 | Strategy Tester backtest from a Zed task (compile, deploy, run on the Windows machine, summary in the terminal) | yes, see "Backtest" below |
@@ -137,6 +138,56 @@ Suppress specific findings inline on the violation line or directly above it wit
 // zed-mql-lint: disable ignored-trade-result Fire-and-forget order in test EA
 trade.Buy(0.1);
 ```
+
+### Smart hover configuration
+
+`mql-lsp` provides configurable bilingual hover documentation for MQL5 symbols and `.set` input parameters, supporting both English and Khmer with independent language toggles, primary language ordering, and a master disable switch.
+
+Configure in Zed's `settings.json`:
+
+```json
+{
+  "lsp": {
+    "mql-lsp": {
+      "initialization_options": {
+        "hover": {
+          "enabled": true,
+          "languages": {
+            "english": true,
+            "khmer": true
+          },
+          "primaryLanguage": "km",
+          "showSource": true,
+          "showDocumentation": true
+        }
+      }
+    }
+  }
+}
+```
+
+#### Configuration Options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `hover.enabled` | `boolean` | `true` | Master switch for all hover requests (returns `null` when false). |
+| `hover.languages.english` | `boolean` | `true` | Enable English documentation in hover responses. |
+| `hover.languages.khmer` | `boolean` | `false` | Enable Khmer documentation in hover responses. |
+| `hover.primaryLanguage` | `"en"` \| `"km"` | `"en"` | First language displayed in bilingual mode; also selects localized UI labels. |
+| `hover.showSource` | `boolean` | `true` | Include source declaration file and 1-based line number. |
+| `hover.showDocumentation` | `boolean` | `true` | Include prose explanations and documentation provenance. |
+
+#### Authored bilingual comments
+
+Author your own functions, macros, enums, and classes with `// @en` and `// @km` tags:
+
+```mql5
+// @en Identifier for the recovery engine.
+// @km លេខសម្គាល់សម្រាប់ម៉ាស៊ីនស្តារការខាតបង់។
+#define ENG_REC 1
+```
+
+Continuation lines and empty comment lines (paragraph breaks) are preserved. Untagged legacy comments are conservatively classified by script (pure Khmer as Khmer, pure English as English, mixed text as unclassified) to prevent language leaks when single-language mode is selected.
 
 ### MQL5 Snippets
 

@@ -1,10 +1,14 @@
 mod compiler;
+mod hover;
+mod hover_config;
 mod index;
 mod lint;
+mod localization;
 mod set_file;
 mod snippets;
 
-use index::{Index, Kind, Symbol};
+use hover_config::HoverConfig;
+use index::{Index, Kind};
 use lsp_server::{Connection, Message, Notification, Request, Response};
 use lsp_types::{
     notification::{Notification as _, *},
@@ -46,19 +50,57 @@ fn default_mql5_roots() -> Vec<PathBuf> {
     v
 }
 
-fn word_at(text: &str, pos: Position) -> Option<String> {
+fn word_range_at(text: &str, pos: Position) -> Option<(String, Range)> {
     let line = text.lines().nth(pos.line as usize)?;
-    let chars: Vec<char> = line.chars().collect();
-    let is_w = |c: char| c.is_alphanumeric() || c == '_';
-    let mut s = (pos.character as usize).min(chars.len());
-    let mut e = s;
-    while s > 0 && is_w(chars[s - 1]) {
+    let mut char_indices = Vec::new();
+    let mut current_utf16 = 0u32;
+    for c in line.chars() {
+        let len16 = c.len_utf16() as u32;
+        char_indices.push((c, current_utf16, current_utf16 + len16));
+        current_utf16 += len16;
+    }
+
+    if char_indices.is_empty() {
+        return None;
+    }
+
+    let target = pos.character;
+    let cursor_idx = if target >= current_utf16 {
+        char_indices.len()
+    } else {
+        char_indices
+            .iter()
+            .position(|(_, start, end)| target >= *start && target < *end)
+            .unwrap_or(char_indices.len())
+    };
+
+    let is_ident = |c: char| c.is_alphanumeric() || c == '_';
+    let mut s = cursor_idx;
+    let mut e = cursor_idx;
+
+    while s > 0 && is_ident(char_indices[s - 1].0) {
         s -= 1;
     }
-    while e < chars.len() && is_w(chars[e]) {
+    while e < char_indices.len() && is_ident(char_indices[e].0) {
         e += 1;
     }
-    (s < e).then(|| chars[s..e].iter().collect())
+
+    if s < e {
+        let word: String = char_indices[s..e].iter().map(|(c, _, _)| *c).collect();
+        let start_col = char_indices[s].1;
+        let end_col = char_indices[e - 1].2;
+        let range = Range::new(
+            Position::new(pos.line, start_col),
+            Position::new(pos.line, end_col),
+        );
+        Some((word, range))
+    } else {
+        None
+    }
+}
+
+fn word_at(text: &str, pos: Position) -> Option<String> {
+    word_range_at(text, pos).map(|(w, _)| w)
 }
 
 fn completion_kind(k: Kind) -> CompletionItemKind {
@@ -69,15 +111,6 @@ fn completion_kind(k: Kind) -> CompletionItemKind {
         Kind::Constant => CompletionItemKind::CONSTANT,
         Kind::Macro => CompletionItemKind::CONSTANT,
     }
-}
-
-fn markdown(s: &Symbol) -> String {
-    let mut out = format!("```mql5\n{}\n```", s.signature);
-    if !s.doc.is_empty() {
-        out.push_str("\n\n");
-        out.push_str(&s.doc);
-    }
-    out
 }
 
 fn path_of(uri: &Url) -> Option<PathBuf> {
@@ -156,6 +189,9 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
 
+    let mut hover_config =
+        hover_config::from_initialization_options(init.initialization_options.as_ref());
+
     let mut docs: HashMap<Url, (String, i32)> = HashMap::new();
     let mut revisions: HashMap<Url, u64> = HashMap::new();
     let mut publications = compiler::Publications::new();
@@ -203,7 +239,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
                 if conn.handle_shutdown(&req)? {
                     break;
                 }
-                let resp = handle_request(req, &docs, &index);
+                let resp = handle_request(req, &docs, &index, &hover_config);
                 conn.sender.send(Message::Response(resp))?;
             }
             Message::Notification(n) => {
@@ -235,7 +271,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
                     }
                 } else {
                     let uri = document_uri(&n);
-                    handle_notification(n, &mut docs, &mut index);
+                    handle_notification(n, &mut docs, &mut index, &mut hover_config);
                     if let Some(uri) = uri {
                         if let Some((text, version)) = docs.get(&uri) {
                             let mut lints = lint::check(text, &uri, &lint_config);
@@ -284,7 +320,12 @@ fn text_of(docs: &HashMap<Url, (String, i32)>, uri: &Url) -> Option<String> {
         .or_else(|| fs::read_to_string(path_of(uri)?).ok())
 }
 
-fn handle_request(req: Request, docs: &HashMap<Url, (String, i32)>, index: &Index) -> Response {
+fn handle_request(
+    req: Request,
+    docs: &HashMap<Url, (String, i32)>,
+    index: &Index,
+    hover_config: &HoverConfig,
+) -> Response {
     let id = req.id.clone();
     let ok = |v: serde_json::Value| Response {
         id: id.clone(),
@@ -296,31 +337,56 @@ fn handle_request(req: Request, docs: &HashMap<Url, (String, i32)>, index: &Inde
             let p: HoverParams = serde_json::from_value(req.params).unwrap();
             let tdp = p.text_document_position_params;
 
+            if !hover_config.enabled {
+                return ok(serde_json::Value::Null);
+            }
+
             if let Some(path) = path_of(&tdp.text_document.uri) {
                 if path.extension().is_some_and(|e| e == "set") {
                     if let Some(text) = text_of(docs, &tdp.text_document.uri) {
                         if let Some(line) = text.lines().nth(tdp.position.line as usize) {
                             if let Some(eq_idx) = line.find('=') {
                                 let key = line[..eq_idx].trim();
-                                // if cursor is before the '='
-                                if (tdp.position.character as usize) <= eq_idx {
+                                let key_start = line
+                                    .chars()
+                                    .take_while(|c| c.is_whitespace())
+                                    .map(|c| c.len_utf16() as u32)
+                                    .sum::<u32>();
+                                let key_len =
+                                    key.chars().map(|c| c.len_utf16() as u32).sum::<u32>();
+                                let key_end = key_start + key_len;
+                                let eq_utf16 = line[..=eq_idx]
+                                    .chars()
+                                    .map(|c| c.len_utf16() as u32)
+                                    .sum::<u32>();
+                                if tdp.position.character <= eq_utf16 {
                                     if let Some(inputs) =
                                         set_file::get_mq5_inputs_for_set_file(&path)
                                     {
                                         if let Some(param) = inputs.iter().find(|i| i.name == key) {
-                                            return ok(serde_json::to_value(Hover {
-                                                contents: HoverContents::Markup(MarkupContent {
-                                                    kind: MarkupKind::Markdown,
-                                                    value: format!(
-                                                        "**{}**\n\nType: `{}`\n\nDefault: `{}`",
-                                                        param.name,
-                                                        param.type_name,
-                                                        param.default_value
+                                            let mq5_path = path.with_extension("mq5");
+                                            if let Some(hover_content) =
+                                                hover::render_set_input_hover(
+                                                    param,
+                                                    &mq5_path,
+                                                    hover_config,
+                                                )
+                                            {
+                                                let range = Range::new(
+                                                    Position::new(tdp.position.line, key_start),
+                                                    Position::new(tdp.position.line, key_end),
+                                                );
+                                                return ok(serde_json::to_value(Hover {
+                                                    contents: HoverContents::Markup(
+                                                        MarkupContent {
+                                                            kind: MarkupKind::Markdown,
+                                                            value: hover_content,
+                                                        },
                                                     ),
-                                                }),
-                                                range: None,
-                                            })
-                                            .unwrap());
+                                                    range: Some(range),
+                                                })
+                                                .unwrap());
+                                            }
                                         }
                                     }
                                 }
@@ -331,25 +397,25 @@ fn handle_request(req: Request, docs: &HashMap<Url, (String, i32)>, index: &Inde
                 }
             }
 
-            let hit = text_of(docs, &tdp.text_document.uri)
-                .and_then(|t| word_at(&t, tdp.position))
-                .and_then(|w| index.symbols.get(&w));
-            ok(match hit {
-                Some(v) => serde_json::to_value(Hover {
-                    contents: HoverContents::Markup(MarkupContent {
-                        kind: MarkupKind::Markdown,
-                        value: v
-                            .iter()
-                            .take(5)
-                            .map(markdown)
-                            .collect::<Vec<_>>()
-                            .join("\n\n---\n\n"),
-                    }),
-                    range: None,
-                })
-                .unwrap(),
-                None => serde_json::Value::Null,
-            })
+            let word_and_range =
+                text_of(docs, &tdp.text_document.uri).and_then(|t| word_range_at(&t, tdp.position));
+
+            if let Some((word, range)) = word_and_range {
+                if let Some(symbols) = index.symbols.get(&word) {
+                    if let Some(hover_content) = hover::render_symbol_hover(symbols, hover_config) {
+                        return ok(serde_json::to_value(Hover {
+                            contents: HoverContents::Markup(MarkupContent {
+                                kind: MarkupKind::Markdown,
+                                value: hover_content,
+                            }),
+                            range: Some(range),
+                        })
+                        .unwrap());
+                    }
+                }
+            }
+
+            ok(serde_json::Value::Null)
         }
         GotoDefinition::METHOD => {
             let p: GotoDefinitionParams = serde_json::from_value(req.params).unwrap();
@@ -467,8 +533,24 @@ fn document_uri(n: &Notification) -> Option<Url> {
     }
 }
 
-fn handle_notification(n: Notification, docs: &mut HashMap<Url, (String, i32)>, index: &mut Index) {
+fn handle_notification(
+    n: Notification,
+    docs: &mut HashMap<Url, (String, i32)>,
+    index: &mut Index,
+    hover_config: &mut HoverConfig,
+) {
     match n.method.as_str() {
+        DidChangeConfiguration::METHOD => {
+            if let Ok(p) = serde_json::from_value::<DidChangeConfigurationParams>(n.params) {
+                if p.settings.get("hover").is_some() {
+                    *hover_config = hover_config::from_initialization_options(Some(&p.settings));
+                } else if let Some(mql) = p.settings.get("mql-lsp") {
+                    if let Some(init_opts) = mql.get("initialization_options") {
+                        *hover_config = hover_config::from_initialization_options(Some(init_opts));
+                    }
+                }
+            }
+        }
         DidOpenTextDocument::METHOD => {
             if let Ok(p) = serde_json::from_value::<DidOpenTextDocumentParams>(n.params) {
                 if let Some(path) = path_of(&p.text_document.uri) {
@@ -496,5 +578,190 @@ fn handle_notification(n: Notification, docs: &mut HashMap<Url, (String, i32)>, 
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hover_config::LanguageConfig;
+    use crate::hover_config::PrimaryLanguage;
+    use lsp_types::request::HoverRequest;
+    use serde_json::json;
+
+    #[test]
+    fn test_word_range_at_ascii() {
+        let text = "int   OrderSend(MqlTradeRequest &request);";
+        // Cursor at col 6 ('O')
+        let (word, range) = word_range_at(text, Position::new(0, 6)).unwrap();
+        assert_eq!(word, "OrderSend");
+        assert_eq!(range.start, Position::new(0, 6));
+        assert_eq!(range.end, Position::new(0, 15));
+
+        // Cursor at col 10 ('S' inside OrderSend)
+        let (word2, range2) = word_range_at(text, Position::new(0, 10)).unwrap();
+        assert_eq!(word2, "OrderSend");
+        assert_eq!(range2, range);
+
+        // Cursor at col 15 (right after OrderSend, at '(')
+        let (word3, range3) = word_range_at(text, Position::new(0, 15)).unwrap();
+        assert_eq!(word3, "OrderSend");
+        assert_eq!(range3, range);
+
+        // Cursor at col 3 (right after "int", returns "int")
+        let (word_int, range_int) = word_range_at(text, Position::new(0, 3)).unwrap();
+        assert_eq!(word_int, "int");
+        assert_eq!(range_int.start, Position::new(0, 0));
+        assert_eq!(range_int.end, Position::new(0, 3));
+
+        // Cursor at col 4 (pure whitespace, not adjacent to any identifier)
+        assert!(word_range_at(text, Position::new(0, 4)).is_none());
+    }
+
+    #[test]
+    fn test_word_range_at_utf16_multibyte_and_surrogates() {
+        // Line has:
+        // "// " (3 code units)
+        // "ស្វាគមន៍" (8 Khmer chars = 8 UTF-16 code units)
+        // " " (1 code unit)
+        // "🌍" (1 char U+1F30D = 2 UTF-16 code units, surrogate pair)
+        // " " (1 code unit)
+        // Total prefix = 3 + 8 + 1 + 2 + 1 = 15 UTF-16 code units.
+        // Then "OrderSend" (9 code units) -> 15..24.
+        let text = "// ស្វាគមន៍ 🌍 OrderSend();";
+
+        let (word, range) = word_range_at(text, Position::new(0, 16)).unwrap();
+        assert_eq!(word, "OrderSend");
+        assert_eq!(range.start, Position::new(0, 15));
+        assert_eq!(range.end, Position::new(0, 24));
+    }
+
+    #[test]
+    fn test_handle_request_hover_bilingual() {
+        let index = Index::new();
+        let uri = Url::parse("file:///test/main.mq5").unwrap();
+        let mut docs = HashMap::new();
+        docs.insert(
+            uri.clone(),
+            ("void OnTick() { OrderSend(req, res); }".to_string(), 1),
+        );
+
+        let config = HoverConfig {
+            enabled: true,
+            languages: LanguageConfig {
+                english: true,
+                khmer: true,
+            },
+            primary_language: PrimaryLanguage::English,
+            show_source: true,
+            show_documentation: true,
+        };
+
+        // Col 18 is inside OrderSend
+        let req = Request {
+            id: 1.into(),
+            method: HoverRequest::METHOD.to_string(),
+            params: json!(HoverParams {
+                text_document_position_params: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier { uri },
+                    position: Position::new(0, 18),
+                },
+                work_done_progress_params: Default::default(),
+            }),
+        };
+
+        let resp = handle_request(req, &docs, &index, &config);
+        assert!(resp.error.is_none());
+        let hover: Hover = serde_json::from_value(resp.result.unwrap()).unwrap();
+
+        let range = hover.range.unwrap();
+        assert_eq!(range.start, Position::new(0, 16));
+        assert_eq!(range.end, Position::new(0, 25));
+
+        if let HoverContents::Markup(m) = hover.contents {
+            assert!(m.value.contains("**OrderSend** · Function"));
+            assert!(m.value.contains("**English**\n\nSends a trade request"));
+            assert!(m.value.contains("**ខ្មែរ**\n\nផ្ញើសំណើប្រតិបត្តិការ"));
+            assert!(m.value.contains("Documentation: bundled reference"));
+        } else {
+            panic!("Expected HoverContents::Markup");
+        }
+    }
+
+    #[test]
+    fn test_handle_request_hover_khmer_only() {
+        let index = Index::new();
+        let uri = Url::parse("file:///test/main.mq5").unwrap();
+        let mut docs = HashMap::new();
+        docs.insert(
+            uri.clone(),
+            ("void OnTick() { OrderSend(req, res); }".to_string(), 1),
+        );
+
+        let config = HoverConfig {
+            enabled: true,
+            languages: LanguageConfig {
+                english: false,
+                khmer: true,
+            },
+            primary_language: PrimaryLanguage::Khmer,
+            show_source: true,
+            show_documentation: true,
+        };
+
+        let req = Request {
+            id: 2.into(),
+            method: HoverRequest::METHOD.to_string(),
+            params: json!(HoverParams {
+                text_document_position_params: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier { uri },
+                    position: Position::new(0, 18),
+                },
+                work_done_progress_params: Default::default(),
+            }),
+        };
+
+        let resp = handle_request(req, &docs, &index, &config);
+        let hover: Hover = serde_json::from_value(resp.result.unwrap()).unwrap();
+
+        if let HoverContents::Markup(m) = hover.contents {
+            assert!(m.value.contains("**OrderSend** · អនុគមន៍ (Function)"));
+            assert!(m.value.contains("ផ្ញើសំណើប្រតិបត្តិការ"));
+            assert!(!m.value.contains("Sends a trade request")); // No English leak
+            assert!(!m.value.contains("**English**"));
+        } else {
+            panic!("Expected HoverContents::Markup");
+        }
+    }
+
+    #[test]
+    fn test_handle_request_hover_disabled() {
+        let index = Index::new();
+        let uri = Url::parse("file:///test/main.mq5").unwrap();
+        let mut docs = HashMap::new();
+        docs.insert(
+            uri.clone(),
+            ("void OnTick() { OrderSend(req, res); }".to_string(), 1),
+        );
+
+        let config = HoverConfig {
+            enabled: false,
+            ..Default::default()
+        };
+
+        let req = Request {
+            id: 3.into(),
+            method: HoverRequest::METHOD.to_string(),
+            params: json!(HoverParams {
+                text_document_position_params: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier { uri },
+                    position: Position::new(0, 18),
+                },
+                work_done_progress_params: Default::default(),
+            }),
+        };
+
+        let resp = handle_request(req, &docs, &index, &config);
+        assert_eq!(resp.result.unwrap(), serde_json::Value::Null);
     }
 }

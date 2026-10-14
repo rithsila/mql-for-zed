@@ -1,10 +1,21 @@
+use crate::localization::{parse_comments, LocalizedDoc};
 use regex::Regex;
 use serde::Deserialize;
-use std::{collections::HashMap, fs, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
 use walkdir::WalkDir;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Kind { Function, Class, Enum, Constant, Macro }
+pub enum Kind {
+    Function,
+    Class,
+    Enum,
+    Constant,
+    Macro,
+}
 
 #[derive(Clone, Debug)]
 pub struct Symbol {
@@ -12,11 +23,19 @@ pub struct Symbol {
     pub kind: Kind,
     pub signature: String,
     pub doc: String,
+    pub localized_doc: LocalizedDoc,
     pub loc: Option<(PathBuf, u32)>,
 }
 
 #[derive(Deserialize)]
-struct Builtin { name: String, kind: String, signature: String, doc: String }
+struct Builtin {
+    name: String,
+    kind: String,
+    signature: String,
+    doc: String,
+    #[serde(default)]
+    doc_km: Option<String>,
+}
 
 #[derive(Default)]
 pub struct Index {
@@ -24,9 +43,18 @@ pub struct Index {
 }
 
 const BUILTINS: &str = include_str!("../data/builtins.json");
-const NOT_TYPES: &[&str] = &["return", "else", "if", "while", "for", "switch", "new", "delete", "case", "do", "sizeof", "typedef"];
+const NOT_TYPES: &[&str] = &[
+    "return", "else", "if", "while", "for", "switch", "new", "delete", "case", "do", "sizeof",
+    "typedef",
+];
 
-struct Res { func: Regex, class: Regex, en: Regex, def: Regex, enumval: Regex }
+struct Res {
+    func: Regex,
+    class: Regex,
+    en: Regex,
+    def: Regex,
+    enumval: Regex,
+}
 
 impl Res {
     fn new() -> Self {
@@ -42,10 +70,16 @@ impl Res {
 
 fn params_ok(p: &str) -> bool {
     let p = p.trim();
-    p.is_empty() || p == "void" || p == "..." || p.split(',').all(|a| {
-        let a = a.split('=').next().unwrap_or("").trim();
-        a.split_whitespace().count() >= 2 || a.contains('&') || a.contains('*') || a.contains("[]")
-    })
+    p.is_empty()
+        || p == "void"
+        || p == "..."
+        || p.split(',').all(|a| {
+            let a = a.split('=').next().unwrap_or("").trim();
+            a.split_whitespace().count() >= 2
+                || a.contains('&')
+                || a.contains('*')
+                || a.contains("[]")
+        })
 }
 
 impl Index {
@@ -59,7 +93,24 @@ impl Index {
                     "enum" => Kind::Enum,
                     _ => Kind::Constant,
                 };
-                idx.add(Symbol { name: b.name, kind, signature: b.signature, doc: b.doc, loc: None });
+                let localized_doc = LocalizedDoc {
+                    en: if b.doc.is_empty() {
+                        None
+                    } else {
+                        Some(b.doc.clone())
+                    },
+                    km: b.doc_km,
+                    unclassified: None,
+                    raw: String::new(),
+                };
+                idx.add(Symbol {
+                    name: b.name,
+                    kind,
+                    signature: b.signature,
+                    doc: b.doc,
+                    localized_doc,
+                    loc: None,
+                });
             }
         }
         idx
@@ -77,7 +128,11 @@ impl Index {
     }
 
     pub fn index_dir(&mut self, dir: &Path) {
-        for e in WalkDir::new(dir).max_depth(12).into_iter().filter_map(Result::ok) {
+        for e in WalkDir::new(dir)
+            .max_depth(12)
+            .into_iter()
+            .filter_map(Result::ok)
+        {
             let p = e.path();
             let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
             if e.file_type().is_file() && matches!(ext, "mqh" | "mq5") {
@@ -103,33 +158,75 @@ impl Index {
             for (i, line) in text.lines().enumerate() {
                 let t = line.trim();
                 if let Some(c) = t.strip_prefix("//") {
-                    let c = c.trim_start_matches('/').trim_matches(|ch: char| ch == '+' || ch == '|' || ch.is_whitespace());
-                    if !c.chars().all(|ch| "-=*+|/ ".contains(ch)) { doc.push(c.to_string()); }
+                    let c = c
+                        .trim_start_matches('/')
+                        .trim_matches(|ch: char| ch == '+' || ch == '|' || ch.is_whitespace());
+                    if c.is_empty() {
+                        if !doc.is_empty() {
+                            doc.push(String::new());
+                        }
+                    } else if !c.chars().all(|ch| "-=*+|/ ".contains(ch)) {
+                        doc.push(c.to_string());
+                    }
                     continue;
                 }
-                let d = doc.join(" ");
-                let at = |name: String, kind, signature: String| Symbol { name, kind, signature, doc: d.clone(), loc: Some((path.to_path_buf(), i as u32)) };
+                let has_tags = doc.iter().any(|line| {
+                    let t = line.trim();
+                    t.starts_with("@en") || t.starts_with("@km")
+                });
+                let loc_doc = parse_comments(&doc);
+                let d = if has_tags {
+                    loc_doc.primary_text()
+                } else {
+                    doc.join(" ")
+                };
+                let at = |name: String, kind, signature: String| Symbol {
+                    name,
+                    kind,
+                    signature,
+                    doc: d.clone(),
+                    localized_doc: loc_doc.clone(),
+                    loc: Some((path.to_path_buf(), i as u32)),
+                };
                 if in_enum {
-                    if t.starts_with('}') { in_enum = false; }
-                    else if let Some(c) = r.enumval.captures(line) {
-                        found.push(at(c[1].to_string(), Kind::Constant, t.trim_end_matches(',').to_string()));
+                    if t.starts_with('}') {
+                        in_enum = false;
+                    } else if let Some(c) = r.enumval.captures(line) {
+                        found.push(at(
+                            c[1].to_string(),
+                            Kind::Constant,
+                            t.trim_end_matches(',').to_string(),
+                        ));
                     }
                 } else if let Some(c) = r.def.captures(line) {
                     let args = c.get(2).map_or("", |m| m.as_str());
-                    found.push(at(c[1].to_string(), Kind::Macro, format!("#define {}{} {}", &c[1], args, c[3].trim()).trim().to_string()));
+                    found.push(at(
+                        c[1].to_string(),
+                        Kind::Macro,
+                        format!("#define {}{} {}", &c[1], args, c[3].trim())
+                            .trim()
+                            .to_string(),
+                    ));
                 } else if let Some(c) = r.en.captures(line) {
                     found.push(at(c[1].to_string(), Kind::Enum, format!("enum {}", &c[1])));
                     in_enum = !t.contains('}') && (t.contains('{') || !t.ends_with(';'));
                 } else if let Some(c) = r.class.captures(line) {
                     if !t.ends_with(';') {
-                        let sig = match c.get(2) { Some(b) => format!("class {} : {}", &c[1], b.as_str()), None => format!("class {}", &c[1]) };
+                        let sig = match c.get(2) {
+                            Some(b) => format!("class {} : {}", &c[1], b.as_str()),
+                            None => format!("class {}", &c[1]),
+                        };
                         found.push(at(c[1].to_string(), Kind::Class, sig));
                     }
                 } else if depth <= 1 {
                     if let Some(c) = r.func.captures(line) {
                         let ty = c[1].trim();
                         if !NOT_TYPES.contains(&ty) && params_ok(&c[3]) {
-                            found.push(at(c[2].to_string(), Kind::Function, format!("{} {}({})", ty, &c[2], c[3].trim())));
+                            found.push(at(
+                                c[2].to_string(),
+                                Kind::Function,
+                                format!("{} {}({})", ty, &c[2], c[3].trim()),
+                            ));
                         }
                     }
                 }
@@ -138,7 +235,9 @@ impl Index {
                 doc.clear();
             }
         });
-        for s in found { self.add(s); }
+        for s in found {
+            self.add(s);
+        }
     }
 }
 
@@ -160,5 +259,17 @@ mod tests {
         j.index_text(Path::new("/x/b.mqh"), "//+------------------+\n//| Class CFoo.      |\n//| Derives from X.  |\n//+------------------+\nclass CFoo : public X\n{\n};\n");
         assert_eq!(j.symbols["CFoo"][0].doc, "Class CFoo. Derives from X.");
         assert!(i.symbols.contains_key("OrderSend"));
+        assert!(i.symbols["OrderSend"][0].localized_doc.km.is_some());
+    }
+
+    #[test]
+    fn indexes_bilingual_comments() {
+        let mut i = Index::default();
+        let src = "// @en Risk multiplier.\n// @km មេគុណហានិភ័យ។\n#define RISK_MULT 2.5\n";
+        i.index_text(Path::new("/x/risk.mqh"), src);
+        let s = &i.symbols["RISK_MULT"][0];
+        assert_eq!(s.localized_doc.en.as_deref(), Some("Risk multiplier."));
+        assert_eq!(s.localized_doc.km.as_deref(), Some("មេគុណហានិភ័យ។"));
+        assert_eq!(s.doc, "Risk multiplier.");
     }
 }
