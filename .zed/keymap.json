@@ -1,0 +1,13 @@
+[
+  {
+    "context": "Editor",
+    "bindings": {
+      "alt-e": [
+        "task::Spawn",
+        {
+          "task_name": "MQL: Explain Selection (AI Vibe Explainer)"
+        }
+      ]
+    }
+  }
+]

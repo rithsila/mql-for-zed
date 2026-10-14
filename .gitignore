@@ -1,5 +1,8 @@
 # Local runs and state
-.mql/runs/
+.mql/
+*.log
+__pycache__/
+*.pyc
 
 # Build artifacts
 /target/

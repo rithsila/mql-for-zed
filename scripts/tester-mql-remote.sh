@@ -12,6 +12,7 @@
 #   MQL_BT_CURRENCY      must match the account currency (default: USC, the cent account on the VM)
 #   MQL_BT_LEVERAGE      e.g. 1:500                     (default: 1:500)
 #   MQL_BT_LOGIN/SERVER  account the tester logs in with (default: read from the VM terminal's config/common.ini)
+#   MQL_BT_PASSWORD      optional account password; goes ONLY to the uploaded VM ini (saved copy is redacted)
 #   MQL_BT_SET           .set file for EA inputs        (default: <EA>.set next to the .mq5, if present)
 #   MQL_BT_TIMEOUT       seconds to wait for the run    (default: 1800)
 #   MQL_BT_CLOSE_GUI     1 (default) closes a running GUI terminal of the same install first (needed: one instance per data dir); 0 aborts instead
@@ -73,7 +74,7 @@ if [ -d "$WS/.git" ]; then
 else
   GIT_ID="nogit"
 fi
-RUN_ID="${NOW}-${GIT_ID}-${NAME}"
+RUN_ID="${NOW}-p$$-${GIT_ID}-${NAME}"
 RUN_DIR="$WS/.mql/runs/$RUN_ID"
 mkdir -p "$RUN_DIR"
 echo "== Run ID: $RUN_ID"
@@ -114,7 +115,7 @@ if [[ ! -f "$SET" || ( -z "${MQL_BT_SET:-}" && "$SRC" -nt "$SET" && "$(head -c $
   fi
 fi
 if [[ -f "$SET" ]]; then
-  UPLOADED="zedmql_$NAME.set"
+  UPLOADED="zedmql_${RUN_ID}.set"
   vm "mkdir \"$(winpath "$VM_MQL5")\\Profiles\\Tester\" 2>nul & exit 0"
   scp -q "${SSH_OPTS[@]}" "$SET" "$HOST:$VM_MQL5/Profiles/Tester/$UPLOADED" || die "could not upload $SET"
   SETLINE="ExpertParameters=$UPLOADED"
@@ -126,14 +127,15 @@ fi
 INI="$TMP/zedmql-$NAME.ini"
 {
   echo "[Common]"; echo "Login=$LOGIN"; echo "Server=$SERVER"
+  [[ -n "$(printenv MQL_BT_PASSWORD)" ]] && echo "Password=$(printenv MQL_BT_PASSWORD)" || true
   echo "[Tester]"; echo "Expert=$EXPERT"; [[ -n "$SETLINE" ]] && echo "$SETLINE"
   echo "Symbol=$SYMBOL"; echo "Period=$PERIOD"; echo "Model=$MODEL"; echo "Optimization=0"
   echo "FromDate=$FROM"; echo "ToDate=$TO"; echo "Deposit=$DEPOSIT"; echo "Currency=$CURRENCY"; echo "Leverage=$LEVERAGE"
   echo "ExecutionMode=0"; echo "UseLocal=1"; echo "UseRemote=0"; echo "UseCloud=0"
-  echo "Report=zedmql_$NAME.htm"; echo "ReplaceReport=1"; echo "ShutdownTerminal=1"; echo "Visual=0"
+  echo "Report=zedmql_${RUN_ID}.htm"; echo "ReplaceReport=1"; echo "ShutdownTerminal=1"; echo "Visual=0"
 } > "$INI"
-cp "$INI" "$RUN_DIR/tester.ini"
-VM_INI="$VM_WORK/zedmql-$NAME.ini"
+sed -E 's/^Password=.*/Password=<redacted>/' "$INI" > "$RUN_DIR/tester.ini"
+VM_INI="$VM_WORK/zedmql-${RUN_ID}.ini"
 scp -q "${SSH_OPTS[@]}" "$INI" "$HOST:$VM_INI" || die "could not upload tester ini"
 
 # 5. One instance per data dir: close a running GUI terminal (gracefully, in the RDP session) or abort
@@ -143,10 +145,10 @@ if [[ "$(vm_running)" != "0" && -n "$(vm_running)" ]]; then
   cat > "$TMP/close.ps1" <<EOF
 Get-Process terminal64 -ErrorAction SilentlyContinue | Where-Object { \$_.Path -eq '$(winpath "$VM_TERM")' } | ForEach-Object { taskkill /pid \$_.Id | Out-Null; [void]\$_.WaitForExit(30000) }
 EOF
-  scp -q "${SSH_OPTS[@]}" "$TMP/close.ps1" "$HOST:$VM_WORK/zedmql-close.ps1"
-  vm "schtasks /create /tn zedmql_close /sc once /st 00:00 /it /f /tr \"powershell -NoProfile -ExecutionPolicy Bypass -File $(winpath "$VM_WORK")\\zedmql-close.ps1\" >nul & schtasks /run /tn zedmql_close >nul" >/dev/null
+  scp -q "${SSH_OPTS[@]}" "$TMP/close.ps1" "$HOST:$VM_WORK/zedmql-close-${RUN_ID}.ps1"
+  vm "schtasks /create /tn zedmql_close_${RUN_ID} /sc once /st 00:00 /it /f /tr \"powershell -NoProfile -ExecutionPolicy Bypass -File $(winpath "$VM_WORK")\\zedmql-close-${RUN_ID}.ps1\" >nul & schtasks /run /tn zedmql_close_${RUN_ID} >nul" >/dev/null
   for _ in $(seq 1 20); do sleep 2; [[ "$(vm_running)" == "0" ]] && break; done
-  vm "schtasks /delete /tn zedmql_close /f >nul 2>&1 & exit 0" >/dev/null
+  vm "schtasks /delete /tn zedmql_close_${RUN_ID} /f >nul 2>&1 & exit 0" >/dev/null
   [[ "$(vm_running)" == "0" ]] || die "could not close the VM terminal; close it by hand and re-run"
 fi
 
@@ -157,7 +159,7 @@ size() { vm "for %F in (\"$(winpath "$1")\") do @echo %~zF" 2>/dev/null | tr -d 
 TOFF="$(size "$TLOG")"; MOFF="$(size "$MLOG")"
 DEALS="zedmql_${NAME}_deals.csv"; EQUITY="zedmql_${NAME}_equity.csv"; COMMON_FILES="$(dirname "$DATA")/Common/Files"
 echo "== Backtest: $NAME $SYMBOL $PERIOD model=$MODEL $FROM -> $TO deposit=$DEPOSIT $CURRENCY (account $LOGIN @ $SERVER)"
-vm "del \"$(winpath "$DATA")\\zedmql_$NAME.htm\" \"$(winpath "$COMMON_FILES")\\$DEALS\" \"$(winpath "$COMMON_FILES")\\$EQUITY\" 2>nul & start \"\" /wait \"$(winpath "$VM_TERM")\" /config:\"$(winpath "$VM_INI")\"" &
+vm "del \"$(winpath "$DATA")\\zedmql_${RUN_ID}.htm\" \"$(winpath "$COMMON_FILES")\\$DEALS\" \"$(winpath "$COMMON_FILES")\\$EQUITY\" 2>nul & start \"\" /wait \"$(winpath "$VM_TERM")\" /config:\"$(winpath "$VM_INI")\"" &
 PID=$!
 START=$SECONDS
 while kill -0 "$PID" 2>/dev/null; do
@@ -170,7 +172,7 @@ done
 echo "== Tester finished in $((SECONDS - START))s"
 
 # 7. Results: HTML report if the terminal wrote one, else the tester log summary
-if scp -q "${SSH_OPTS[@]}" "$HOST:$DATA/zedmql_$NAME.htm" "$RUN_DIR/report.html" 2>/dev/null; then
+if scp -q "${SSH_OPTS[@]}" "$HOST:$DATA/zedmql_${RUN_ID}.htm" "$RUN_DIR/report.html" 2>/dev/null; then
   echo "Report: $RUN_DIR/report.html"
 fi
 scp -q "${SSH_OPTS[@]}" "$HOST:$TLOG" "$RUN_DIR/tester.log" 2>/dev/null || : > "$RUN_DIR/tester.log"
@@ -181,7 +183,8 @@ scp -q "${SSH_OPTS[@]}" "$HOST:$COMMON_FILES/$EQUITY" "$RUN_DIR/equity.csv" 2>/d
 # Build manifest
 cat > "$RUN_DIR/manifest.json" <<EOF
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "kind": "backtest",
   "run_id": "$RUN_ID",
   "timestamp": "$NOW",
   "source": {
@@ -199,6 +202,10 @@ cat > "$RUN_DIR/manifest.json" <<EOF
     "currency": "$CURRENCY",
     "leverage": "$LEVERAGE"
   },
+  "broker": {
+    "login": "$LOGIN",
+    "server": "$SERVER"
+  },
   "notes": {
     "market_history_archived": false
   }
@@ -210,5 +217,9 @@ python3 "$SCRIPT_DIR/parse-tester-log.py" --tester-log "$RUN_DIR/tester.log" --t
   --run-dir "$RUN_DIR" --deals-csv "$RUN_DIR/deals.csv" --equity-csv "$RUN_DIR/equity.csv" --report-html "$RUN_DIR/report.html" \
   --title "$NAME backtest" --info "$SYMBOL $PERIOD, model $MODEL, $FROM to $TO, deposit $DEPOSIT $CURRENCY, leverage $LEVERAGE" | tee "$RUN_DIR/summary.txt"
 STATUS=${PIPESTATUS[0]}
+EVOUT="$(python3 "$SCRIPT_DIR/check-run-evidence.py" --run-dir "$RUN_DIR" --tester-log "$RUN_DIR/tester.log" --offset "$TOFF" --symbol "$SYMBOL" --from "$FROM" --to "$TO")"
+EV=$?
+echo "$EVOUT" | tee -a "$RUN_DIR/summary.txt"
+[[ $EV -ne 0 ]] && STATUS=$EV
 echo "Saved in $RUN_DIR"
 exit $STATUS

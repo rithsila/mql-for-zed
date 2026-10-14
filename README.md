@@ -12,6 +12,7 @@ MQL5 only. MQL4 is out of scope.
 |---|---|
 | Syntax highlighting and outline (`.mq5`, `.mqh`) | yes |
 | Bilingual smart hover docs (English / Khmer / bilingual / facts-only) with UTF-16 precision | yes |
+| AI / Context-Aware Statement Explainer & Hover (highlight & hover, English & Khmer) | yes |
 | Hover docs for ~130 common built-ins (`OrderSend`, `iMA`, `CopyRates`, ...) with curated Khmer entries | yes |
 | Hover, completion and go-to-definition for the standard library (`CTrade`, `CArrayObj`, ...) and your own workspace | yes |
 | Compile and syntax check from Zed tasks, with clickable `file:line:col` errors | yes, via a Windows machine over SSH (see below) |
@@ -188,6 +189,25 @@ Author your own functions, macros, enums, and classes with `// @en` and `// @km`
 ```
 
 Continuation lines and empty comment lines (paragraph breaks) are preserved. Untagged legacy comments are conservatively classified by script (pure Khmer as Khmer, pure English as English, mixed text as unclassified) to prevent language leaks when single-language mode is selected.
+
+### AI / Context-Aware Explainer & Statement Hover
+
+`mql-lsp` includes an instant, context-aware explainer for non-coders and algorithmic traders. When you hover over control flow, statements, loops, or trading logic—or highlight any code block—the explainer synthesizes plain-language trading explanations, structural mechanics, and trader risk warnings in both English and Khmer.
+
+#### 1. Instant Statement & Condition Hover
+Hovering directly over:
+- **Condition Gates (`if (...)`)**: Explains what filter or gate must pass before executing trades.
+- **Reverse Loops (`for (int i = total - 1; i >= 0; i--)`)**: Highlights why order/position counting iterates backward (preventing index shifts when orders close).
+- **Return / Initialization (`return INIT_SUCCEEDED;`)**: Clarifies lifecycle state transitions and EA startup validations.
+- **Structures & Inputs (`struct SymbolContext`, `input double LotSize`)**: Explains state container roles and trader configuration parameters.
+- **Trading Expressions (`OrderSend`, `CopyBuffer`, `NormalizeDouble`)**: Highlights critical slippage, netting vs. hedging broker quirks, and price normalization requirements.
+
+#### 2. Highlight Code & Trigger Explainer
+- **LSP Code Actions**: Select any code snippet or block and open the code action menu (`Cmd+.` or `Alt+Enter`) to run:
+  - `🤖 Explain Selection (MQL Vibe Explainer)`
+  - `💡 Generate Workspace Knowledge for This File`
+- **Keybinding**: Press `Alt-E` (configured in `.zed/keymap.json`) with an active code selection to explain the highlighted snippet via the `MQL: Explain Selection` task.
+- **Knowledge Auto-Sync**: Explanations can be populated into `.mql/knowledge.json` using `mql-lsp explain "<snippet>"` or `scripts/explain-mql.sh` for instant offline hover lookups.
 
 ### MQL5 Snippets
 

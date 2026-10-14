@@ -1,4 +1,5 @@
 mod compiler;
+mod explainer;
 mod hover;
 mod hover_config;
 mod index;
@@ -8,7 +9,7 @@ mod set_file;
 mod snippets;
 
 use hover_config::HoverConfig;
-use index::{Index, Kind};
+use index::{Index, Kind, NOT_TYPES};
 use lsp_server::{Connection, Message, Notification, Request, Response};
 use lsp_types::{
     notification::{Notification as _, *},
@@ -118,6 +119,71 @@ fn path_of(uri: &Url) -> Option<PathBuf> {
 }
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "explain" => {
+                let snippet = if args.len() > 2 {
+                    args[2..].join(" ")
+                } else {
+                    use std::io::Read;
+                    let mut buffer = String::new();
+                    let _ = std::io::stdin().read_to_string(&mut buffer);
+                    buffer
+                };
+                let explanation = explainer::explain_code(&snippet);
+                println!("{}", explanation);
+
+                // Auto-register extracted structs/classes/inputs/functions into .mql/knowledge.json
+                let knowledge = explainer::generate_file_knowledge(&snippet);
+                if !knowledge.is_empty() {
+                    let _ = explainer::write_workspace_knowledge(Path::new("."), knowledge);
+                }
+                return Ok(());
+            }
+            "generate-knowledge" => {
+                if args.len() < 3 {
+                    eprintln!("Usage: mql-lsp generate-knowledge <file.mq5|file.mqh>");
+                    std::process::exit(1);
+                }
+                let target_path = Path::new(&args[2]);
+                if !target_path.exists() {
+                    eprintln!("Error: file '{}' not found.", target_path.display());
+                    std::process::exit(1);
+                }
+                let content = fs::read_to_string(target_path)?;
+                let knowledge = explainer::generate_file_knowledge(&content);
+                let workspace = target_path.parent().unwrap_or_else(|| Path::new("."));
+                let count = explainer::write_workspace_knowledge(workspace, knowledge)?;
+                println!(
+                    "✅ Generated {} knowledge entries in {}/.mql/knowledge.json",
+                    count,
+                    workspace.display()
+                );
+                return Ok(());
+            }
+            "--help" | "-h" => {
+                println!("mql-lsp: MetaTrader 5 Language Server & AI Vibe Explainer");
+                println!();
+                println!("Usage:");
+                println!("  mql-lsp                         Start LSP server on stdio (for Zed)");
+                println!(
+                    "  mql-lsp explain \"<code snippet>\"  Explain code in plain English & Khmer"
+                );
+                println!(
+                    "  mql-lsp generate-knowledge <file> Generate .mql/knowledge.json hover docs"
+                );
+                println!("  mql-lsp --version               Show version");
+                return Ok(());
+            }
+            "--version" | "-v" => {
+                println!("mql-lsp {}", env!("CARGO_PKG_VERSION"));
+                return Ok(());
+            }
+            _ => {}
+        }
+    }
+
     let (conn, io) = Connection::stdio();
     let caps = serde_json::to_value(ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Options(
@@ -131,6 +197,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
         hover_provider: Some(HoverProviderCapability::Simple(true)),
         definition_provider: Some(OneOf::Left(true)),
         completion_provider: Some(CompletionOptions::default()),
+        code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
         ..Default::default()
     })?;
     let init: InitializeParams = serde_json::from_value(conn.initialize(caps)?)?;
@@ -159,6 +226,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
         index.index_dir(&root.join("Include"));
     }
     if let Some(w) = &workspace {
+        index.set_workspace(w.clone());
         index.index_dir(w);
     }
 
@@ -401,17 +469,39 @@ fn handle_request(
                 text_of(docs, &tdp.text_document.uri).and_then(|t| word_range_at(&t, tdp.position));
 
             if let Some((word, range)) = word_and_range {
-                if let Some(symbols) = index.symbols.get(&word) {
-                    if let Some(hover_content) = hover::render_symbol_hover(symbols, hover_config) {
-                        return ok(serde_json::to_value(Hover {
-                            contents: HoverContents::Markup(MarkupContent {
-                                kind: MarkupKind::Markdown,
-                                value: hover_content,
-                            }),
-                            range: Some(range),
-                        })
-                        .unwrap());
+                // If not a language keyword, check symbol index
+                if !NOT_TYPES.contains(&word.as_str()) && word != "input" && word != "sinput" {
+                    if let Some(symbols) = index.symbols_for_hover(&word) {
+                        if let Some(hover_content) =
+                            hover::render_symbol_hover(&symbols, hover_config)
+                        {
+                            return ok(serde_json::to_value(Hover {
+                                contents: HoverContents::Markup(MarkupContent {
+                                    kind: MarkupKind::Markdown,
+                                    value: hover_content,
+                                }),
+                                range: Some(range),
+                            })
+                            .unwrap());
+                        }
                     }
+                }
+            }
+
+            // Fallback: If no symbol hover was rendered (e.g. cursor is on keyword, operator,
+            // condition, or statement), inspect statement at position for Context-Aware Vibe Explainer!
+            if let Some(doc_text) = text_of(docs, &tdp.text_document.uri) {
+                if let Some((explainer_content, explainer_range)) =
+                    hover::render_statement_hover(&doc_text, tdp.position, hover_config)
+                {
+                    return ok(serde_json::to_value(Hover {
+                        contents: HoverContents::Markup(MarkupContent {
+                            kind: MarkupKind::Markdown,
+                            value: explainer_content,
+                        }),
+                        range: Some(explainer_range),
+                    })
+                    .unwrap());
                 }
             }
 
@@ -511,6 +601,68 @@ fn handle_request(
                 items.extend(symbols);
             }
             ok(serde_json::to_value(CompletionResponse::Array(items)).unwrap())
+        }
+        CodeActionRequest::METHOD => {
+            let p: CodeActionParams = serde_json::from_value(req.params).unwrap();
+            let mut actions: Vec<CodeActionOrCommand> = Vec::new();
+
+            if let Some(doc_text) = text_of(docs, &p.text_document.uri) {
+                let range = p.range;
+                let start_line = range.start.line as usize;
+                let end_line = range.end.line as usize;
+                let lines: Vec<&str> = doc_text.lines().collect();
+
+                let selected_text = if start_line == end_line {
+                    lines.get(start_line).map(|l| {
+                        let start = (range.start.character as usize).min(l.len());
+                        let end = (range.end.character as usize).min(l.len());
+                        if start < end {
+                            l[start..end].to_string()
+                        } else {
+                            l.trim().to_string()
+                        }
+                    })
+                } else if start_line < end_line && end_line < lines.len() {
+                    let mut s = String::new();
+                    for l in &lines[start_line..=end_line] {
+                        s.push_str(l);
+                        s.push('\n');
+                    }
+                    Some(s.trim().to_string())
+                } else {
+                    None
+                };
+
+                if let Some(snippet) = selected_text {
+                    if !snippet.is_empty() {
+                        actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                            title: "🤖 Explain Selection (MQL Vibe Explainer)".to_string(),
+                            kind: Some(CodeActionKind::REFACTOR),
+                            command: Some(Command {
+                                title: "Explain Selection".to_string(),
+                                command: "mql.explain".to_string(),
+                                arguments: Some(vec![serde_json::to_value(&snippet).unwrap()]),
+                            }),
+                            ..Default::default()
+                        }));
+                        actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                            title: "💡 Generate Workspace Knowledge for This File".to_string(),
+                            kind: Some(CodeActionKind::REFACTOR),
+                            command: Some(Command {
+                                title: "Generate Knowledge".to_string(),
+                                command: "mql.generateKnowledge".to_string(),
+                                arguments: Some(vec![serde_json::to_value(
+                                    p.text_document.uri.to_string(),
+                                )
+                                .unwrap()]),
+                            }),
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            ok(serde_json::to_value(actions).unwrap())
         }
         _ => Response {
             id,
@@ -680,7 +832,9 @@ mod tests {
 
         if let HoverContents::Markup(m) = hover.contents {
             assert!(m.value.contains("**OrderSend** · Function"));
-            assert!(m.value.contains("**English**\n\nSends a trade request"));
+            assert!(m
+                .value
+                .contains("**English**\n\nSends a live trade (Buy/Sell)"));
             assert!(m.value.contains("**ខ្មែរ**\n\nផ្ញើសំណើប្រតិបត្តិការ"));
             assert!(m.value.contains("Documentation: bundled reference"));
         } else {
@@ -727,7 +881,7 @@ mod tests {
         if let HoverContents::Markup(m) = hover.contents {
             assert!(m.value.contains("**OrderSend** · អនុគមន៍ (Function)"));
             assert!(m.value.contains("ផ្ញើសំណើប្រតិបត្តិការ"));
-            assert!(!m.value.contains("Sends a trade request")); // No English leak
+            assert!(!m.value.contains("Sends a live trade")); // No English leak
             assert!(!m.value.contains("**English**"));
         } else {
             panic!("Expected HoverContents::Markup");
@@ -763,5 +917,168 @@ mod tests {
 
         let resp = handle_request(req, &docs, &index, &config);
         assert_eq!(resp.result.unwrap(), serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_handle_request_hover_with_knowledge_json() {
+        let temp_dir = std::env::temp_dir().join(format!("mql_test_ws_{}", std::process::id()));
+        let _ = fs::create_dir_all(temp_dir.join(".mql"));
+        let knowledge_file = temp_dir.join(".mql/knowledge.json");
+        let knowledge_content = r#"{
+            "SymbolContext": {
+                "en": "Holds currency trading state.",
+                "km": "ផ្ទុកស្ថានភាពជួញដូររូបិយប័ណ្ណ។",
+                "vibe": "Per-symbol trading context."
+            }
+        }"#;
+        fs::write(&knowledge_file, knowledge_content).unwrap();
+
+        let mut index = Index::new();
+        index.set_workspace(temp_dir.clone());
+
+        let file_path = temp_dir.join("waka.mq5");
+        let code = "class SymbolContext\n{\n};\nvoid OnTick() { SymbolContext sc; }";
+        fs::write(&file_path, code).unwrap();
+        index.index_file(&file_path);
+
+        let uri = Url::from_file_path(&file_path).unwrap();
+        let mut docs = HashMap::new();
+        docs.insert(uri.clone(), (code.to_string(), 1));
+
+        let mut config = HoverConfig::default();
+        config.languages.khmer = true;
+        let req = Request {
+            id: 4.into(),
+            method: HoverRequest::METHOD.to_string(),
+            params: json!(HoverParams {
+                text_document_position_params: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier { uri },
+                    position: Position::new(0, 8), // on "SymbolContext"
+                },
+                work_done_progress_params: Default::default(),
+            }),
+        };
+
+        let resp = handle_request(req, &docs, &index, &config);
+        assert!(resp.error.is_none());
+        let hover: Hover = serde_json::from_value(resp.result.unwrap()).unwrap();
+
+        if let HoverContents::Markup(m) = hover.contents {
+            assert!(m.value.contains("**SymbolContext** · Class"));
+            assert!(m.value.contains("Holds currency trading state."));
+            assert!(m.value.contains("ផ្ទុកស្ថានភាពជួញដូររូបិយប័ណ្ណ។"));
+            assert!(m.value.contains("Per-symbol trading context."));
+            assert!(m
+                .value
+                .contains("Documentation: AI Workspace Knowledge (.mql/knowledge.json)"));
+        } else {
+            panic!("Expected HoverContents::Markup");
+        }
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_handle_request_hover_condition_gate() {
+        let index = Index::new();
+        let uri = Url::parse("file:///test/main.mq5").unwrap();
+        let mut docs = HashMap::new();
+        let code = "void OnTick()\n{\n   if(AllowHedging && mm != ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)\n   {\n   }\n}";
+        docs.insert(uri.clone(), (code.to_string(), 1));
+
+        let config = HoverConfig {
+            enabled: true,
+            languages: LanguageConfig {
+                english: true,
+                khmer: true,
+            },
+            primary_language: PrimaryLanguage::English,
+            show_source: true,
+            show_documentation: true,
+        };
+
+        // Hover directly on 'if' keyword at line 2 col 4
+        let req = Request {
+            id: 5.into(),
+            method: HoverRequest::METHOD.to_string(),
+            params: json!(HoverParams {
+                text_document_position_params: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
+                    position: Position::new(2, 4),
+                },
+                work_done_progress_params: Default::default(),
+            }),
+        };
+
+        let resp = handle_request(req, &docs, &index, &config);
+        assert!(resp.error.is_none());
+        let hover: Hover = serde_json::from_value(resp.result.unwrap()).unwrap();
+
+        if let HoverContents::Markup(m) = hover.contents {
+            assert!(m.value.contains("Condition Gate"));
+            assert!(m.value.contains("AllowHedging"));
+            assert!(m.value.contains("ACCOUNT_MARGIN_MODE_RETAIL_HEDGING"));
+            assert!(m.value.contains("Trader Gotcha"));
+        } else {
+            panic!("Expected HoverContents::Markup");
+        }
+
+        // Also test hovering on operator '&&' at line 2 col 19
+        let req_op = Request {
+            id: 6.into(),
+            method: HoverRequest::METHOD.to_string(),
+            params: json!(HoverParams {
+                text_document_position_params: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier { uri },
+                    position: Position::new(2, 19),
+                },
+                work_done_progress_params: Default::default(),
+            }),
+        };
+
+        let resp_op = handle_request(req_op, &docs, &index, &config);
+        assert!(resp_op.error.is_none());
+        let hover_op: Hover = serde_json::from_value(resp_op.result.unwrap()).unwrap();
+        if let HoverContents::Markup(m) = hover_op.contents {
+            assert!(m.value.contains("Condition Gate"));
+            assert!(m.value.contains("&&"));
+        } else {
+            panic!("Expected HoverContents::Markup");
+        }
+    }
+
+    #[test]
+    fn test_handle_request_code_action_selection() {
+        let index = Index::new();
+        let uri = Url::parse("file:///test/main.mq5").unwrap();
+        let mut docs = HashMap::new();
+        let code = "if(AllowHedging && mm != ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)";
+        docs.insert(uri.clone(), (code.to_string(), 1));
+
+        let config = HoverConfig::default();
+
+        let req = Request {
+            id: 7.into(),
+            method: CodeActionRequest::METHOD.to_string(),
+            params: json!(CodeActionParams {
+                text_document: TextDocumentIdentifier { uri },
+                range: Range::new(Position::new(0, 0), Position::new(0, 60)),
+                context: CodeActionContext::default(),
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            }),
+        };
+
+        let resp = handle_request(req, &docs, &index, &config);
+        assert!(resp.error.is_none());
+        let actions: Vec<CodeActionOrCommand> =
+            serde_json::from_value(resp.result.unwrap()).unwrap();
+
+        assert!(!actions.is_empty());
+        let has_explain = actions.iter().any(|a| match a {
+            CodeActionOrCommand::CodeAction(ca) => ca.title.contains("Explain Selection"),
+            _ => false,
+        });
+        assert!(has_explain);
     }
 }

@@ -64,11 +64,11 @@ The controller can start on the Mac for development. Closing Zed must not stop i
 
 ## 3. Phase 1: trustworthy single-worker execution
 
-- [ ] Replace MCP placeholders with real doctor, lint, backtest, run retrieval, and comparison operations.
-- [ ] Use typed requests, registered workspaces/workers, approved paths, and non-executable configuration. Reject arbitrary hosts, commands, and path escapes at local and remote boundaries.
-- [ ] Persist accepted jobs before launch; fix failure transitions; bound output, runtime, queue length, artifact size, and pass counts server-side.
-- [ ] Track owned local/remote execution, lock the worker, implement cancellation and restart reconciliation, and retain partial evidence. Mark uncertain remote state explicitly; never retry blindly.
-- [ ] Generate collision-resistant IDs and reject stale/missing reports. Refuse to close unrelated terminals and keep paid/cloud agents disabled.
+- [x] Replace MCP placeholders with real doctor, lint, backtest, run retrieval, and comparison operations. (2026-10-08: implemented in mql-mcp plus scripts/lint-mql.py; MCP stdio smoke verified, doctor SSH probe live)
+- [x] Use typed requests, registered workspaces/workers, approved paths, and non-executable configuration. Reject arbitrary hosts, commands, and path escapes at local and remote boundaries. (2026-10-08: unknown-key rejection, env allow-list, canonical path checks against approved roots; host/paths only from trusted config files)
+- [ ] PARTIAL (2026-10-08): jobs persisted to .mql/jobs before launch; Failed now stays Failed with its result stored; output bounded to 64 KB, 8 active jobs max, deadline enforced, max_passes capped at 1,000,000. Remaining: artifact size bound.
+- [ ] PARTIAL (2026-10-08): worker lock files (.mql/locks), child pid tracking, cancel sends TERM to the job's own process group only, restart reconciles active jobs to RemoteStateUnknown, run artifacts kept. Remaining: confirmation that the remote MT5 process actually terminated.
+- [x] Generate collision-resistant IDs and reject stale/missing reports. Refuse to close unrelated terminals and keep paid/cloud agents disabled. (2026-10-08: run id includes pid; remote .set/.ini/report/scheduled-task names use the run id; optimize rejects stale/missing/zero-pass reports and no-data ranges; UseRemote/UseCloud remain 0; GUI-close filter still matches only the exact install path)
 
 **Acceptance:** a real test produces verifiable artifacts; a failed job stays failed; controller restart does not duplicate active execution; cancellation cannot affect another terminal.
 
@@ -137,3 +137,9 @@ Use existing Rust and Python test infrastructure where applicable. Add MCP/contr
 | Exposure/recovery limits | Approve lot, margin, cycle-loss, and recovery-duration bounds before optimization |
 
 Implementation order: Phase 1 execution integrity, Phase 2 measurements, Phase 3 research loop, Phase 4 validation, then Phase 5 parallel expansion. Validation rules and data partitions must be specified before accepting any Phase 3 result as a qualified preset.
+
+
+## Implementation log
+
+- 2026-10-08, Phase 1 first pass landed. Root cause of the lost cent-account backtest data: the mqlvm terminal is currently logged into **Exness-MT5Real36 (login 257550521)**, while the tested symbols are **Lirunex cent** XAUUSDc/USDUSCc. Their local history cache is frozen: M5/M1 bars exist only from 2025.01.01 23:05 to 2026.09.04 20:55. Any requested range starting after 2026.09.04 tests zero bars - and the old optimize script still reported success. Runs now hard-fail with a NO DATA evidence gate (scripts/check-run-evidence.py) and every manifest records data_coverage + broker login/server.
+- To restore the Lirunex cent feed: re-log the VM terminal into the Lirunex cent account (GUI once, or set MQL_BT_LOGIN / MQL_BT_SERVER / MQL_BT_PASSWORD in <workspace>/.zed/mql-tester.env; the password is written only into the uploaded VM ini and redacted in the saved copy). Until that is done, valid cent-account research ranges must end at 2026.09.04 (history starts 2025.01.01), which is what the first-milestone data-partition decision should use.

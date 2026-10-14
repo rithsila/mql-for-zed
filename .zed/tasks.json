@@ -16,5 +16,23 @@
     ],
     "allow_concurrent_runs": false,
     "reveal": "always"
+  },
+  {
+    "label": "MQL: Explain Selection (AI Vibe Explainer)",
+    "command": "bash \"$ZED_WORKTREE_ROOT/scripts/explain-mql.sh\" explain \"$ZED_SELECTED_TEXT\"",
+    "tags": [
+      "mql5"
+    ],
+    "allow_concurrent_runs": true,
+    "reveal": "always"
+  },
+  {
+    "label": "MQL: Generate Workspace Knowledge (AI Hover Docs)",
+    "command": "bash \"$ZED_WORKTREE_ROOT/scripts/explain-mql.sh\" generate-knowledge \"$ZED_FILE\"",
+    "tags": [
+      "mql5"
+    ],
+    "allow_concurrent_runs": false,
+    "reveal": "always"
   }
 ]

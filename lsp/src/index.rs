@@ -5,6 +5,7 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
+    sync::RwLock,
 };
 use walkdir::WalkDir;
 
@@ -37,13 +38,75 @@ struct Builtin {
     doc_km: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
+pub struct KnowledgeDoc {
+    #[serde(default)]
+    pub en: Option<String>,
+    #[serde(default)]
+    pub km: Option<String>,
+    #[serde(default)]
+    pub vibe: Option<String>,
+}
+
+pub fn parse_knowledge_json(text: &str) -> Option<HashMap<String, KnowledgeDoc>> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let mut map = HashMap::new();
+
+    let target = if let Some(syms) = v.get("symbols").and_then(|s| s.as_object()) {
+        syms
+    } else if let Some(obj) = v.as_object() {
+        obj
+    } else {
+        return None;
+    };
+
+    for (k, val) in target {
+        if k == "$schema" || k == "version" {
+            continue;
+        }
+        if let Some(s) = val.as_str() {
+            map.insert(
+                k.clone(),
+                KnowledgeDoc {
+                    en: Some(s.to_string()),
+                    km: None,
+                    vibe: None,
+                },
+            );
+        } else if let Some(o) = val.as_object() {
+            let en = o
+                .get("en")
+                .or_else(|| o.get("summary"))
+                .or_else(|| o.get("doc"))
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string());
+            let km = o
+                .get("km")
+                .or_else(|| o.get("summary_km"))
+                .or_else(|| o.get("doc_km"))
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string());
+            let vibe = o
+                .get("vibe")
+                .or_else(|| o.get("trading_context"))
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string());
+            map.insert(k.clone(), KnowledgeDoc { en, km, vibe });
+        }
+    }
+    Some(map)
+}
+
 #[derive(Default)]
 pub struct Index {
     pub symbols: HashMap<String, Vec<Symbol>>,
+    pub knowledge: RwLock<HashMap<String, KnowledgeDoc>>,
+    pub workspace_root: Option<PathBuf>,
+    pub last_knowledge_mtime: RwLock<Option<std::time::SystemTime>>,
 }
 
 const BUILTINS: &str = include_str!("../data/builtins.json");
-const NOT_TYPES: &[&str] = &[
+pub const NOT_TYPES: &[&str] = &[
     "return", "else", "if", "while", "for", "switch", "new", "delete", "case", "do", "sizeof",
     "typedef",
 ];
@@ -101,6 +164,7 @@ impl Index {
                     },
                     km: b.doc_km,
                     unclassified: None,
+                    vibe: None,
                     raw: String::new(),
                 };
                 idx.add(Symbol {
@@ -120,9 +184,95 @@ impl Index {
         self.symbols.entry(s.name.clone()).or_default().push(s);
     }
 
+    pub fn set_workspace(&mut self, root: PathBuf) {
+        self.workspace_root = Some(root);
+        self.reload_knowledge();
+    }
+
+    pub fn reload_knowledge(&self) {
+        if let Some(root) = &self.workspace_root {
+            let path = root.join(".mql/knowledge.json");
+            if let Ok(metadata) = fs::metadata(&path) {
+                if let Ok(mtime) = metadata.modified() {
+                    let needs_reload = self
+                        .last_knowledge_mtime
+                        .read()
+                        .map(|guard| guard.map_or(true, |last| mtime > last))
+                        .unwrap_or(true);
+
+                    if needs_reload {
+                        if let Ok(text) = fs::read_to_string(&path) {
+                            if let Some(loaded) = parse_knowledge_json(&text) {
+                                if let Ok(mut k_guard) = self.knowledge.write() {
+                                    *k_guard = loaded;
+                                }
+                                if let Ok(mut m_guard) = self.last_knowledge_mtime.write() {
+                                    *m_guard = Some(mtime);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn check_reload_knowledge(&self) {
+        self.reload_knowledge();
+    }
+
+    pub fn symbols_for_hover(&self, word: &str) -> Option<Vec<Symbol>> {
+        self.check_reload_knowledge();
+        let knowledge_entry = self
+            .knowledge
+            .read()
+            .ok()
+            .and_then(|k| k.get(word).cloned());
+
+        if let Some(symbols) = self.symbols.get(word) {
+            let mut list = symbols.clone();
+            if let Some(k) = knowledge_entry {
+                for s in &mut list {
+                    if s.localized_doc.is_empty() {
+                        s.localized_doc.en = k.en.clone();
+                        s.localized_doc.km = k.km.clone();
+                        s.doc = k.en.clone().unwrap_or_default();
+                    }
+                    if s.localized_doc.vibe.is_none() {
+                        s.localized_doc.vibe = k.vibe.clone();
+                    }
+                }
+            }
+            Some(list)
+        } else if let Some(k) = knowledge_entry {
+            Some(vec![Symbol {
+                name: word.to_string(),
+                kind: Kind::Constant,
+                signature: format!("// Workspace Knowledge: {}", word),
+                doc: k.en.clone().unwrap_or_default(),
+                localized_doc: LocalizedDoc {
+                    en: k.en,
+                    km: k.km,
+                    unclassified: None,
+                    vibe: k.vibe,
+                    raw: String::new(),
+                },
+                loc: None,
+            }])
+        } else {
+            None
+        }
+    }
+
     pub fn remove_file(&mut self, path: &Path) {
+        let norm = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
         self.symbols.retain(|_, v| {
-            v.retain(|s| s.loc.as_ref().map_or(true, |(p, _)| p != path));
+            v.retain(|s| {
+                s.loc.as_ref().map_or(true, |(p, _)| {
+                    let p_norm = p.canonicalize().unwrap_or_else(|_| p.clone());
+                    p_norm != norm && p != path && p != &norm
+                })
+            });
             !v.is_empty()
         });
     }
@@ -142,13 +292,15 @@ impl Index {
     }
 
     pub fn index_file(&mut self, path: &Path) {
-        if let Ok(text) = fs::read_to_string(path) {
-            self.index_text(path, &text);
+        let norm = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        if let Ok(text) = fs::read_to_string(&norm) {
+            self.index_text(&norm, &text);
         }
     }
 
     pub fn index_text(&mut self, path: &Path, text: &str) {
-        self.remove_file(path);
+        let norm = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        self.remove_file(&norm);
         thread_local!(static RES: Res = Res::new());
         let mut doc: Vec<String> = vec![];
         let mut in_enum = false;
@@ -186,7 +338,7 @@ impl Index {
                     signature,
                     doc: d.clone(),
                     localized_doc: loc_doc.clone(),
-                    loc: Some((path.to_path_buf(), i as u32)),
+                    loc: Some((norm.clone(), i as u32)),
                 };
                 if in_enum {
                     if t.starts_with('}') {

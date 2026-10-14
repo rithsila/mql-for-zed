@@ -5,6 +5,7 @@ pub struct LocalizedDoc {
     pub en: Option<String>,
     pub km: Option<String>,
     pub unclassified: Option<String>,
+    pub vibe: Option<String>,
     pub raw: String,
 }
 
@@ -20,6 +21,9 @@ impl LocalizedDoc {
         if let Some(unc) = &self.unclassified {
             return unc.clone();
         }
+        if let Some(vibe) = &self.vibe {
+            return vibe.clone();
+        }
         self.raw.clone()
     }
 
@@ -27,6 +31,7 @@ impl LocalizedDoc {
         self.en.is_none()
             && self.km.is_none()
             && self.unclassified.is_none()
+            && self.vibe.is_none()
             && self.raw.trim().is_empty()
     }
 }
@@ -111,6 +116,7 @@ pub fn parse_comments(raw_lines: &[String]) -> LocalizedDoc {
             en: clean_block(en_lines),
             km: clean_block(km_lines),
             unclassified: clean_block(unc_lines),
+            vibe: None,
             raw,
         };
     }
@@ -130,6 +136,7 @@ pub fn parse_comments(raw_lines: &[String]) -> LocalizedDoc {
             en: None,
             km: Some(full_trimmed),
             unclassified: None,
+            vibe: None,
             raw,
         }
     } else if has_latin && !has_khmer {
@@ -138,6 +145,7 @@ pub fn parse_comments(raw_lines: &[String]) -> LocalizedDoc {
             en: Some(full_trimmed),
             km: None,
             unclassified: None,
+            vibe: None,
             raw,
         }
     } else {
@@ -148,6 +156,7 @@ pub fn parse_comments(raw_lines: &[String]) -> LocalizedDoc {
             en: None,
             km: None,
             unclassified: Some(full_trimmed),
+            vibe: None,
             raw,
         }
     }
@@ -214,6 +223,20 @@ impl Catalog {
         }
     }
 
+    pub fn ai_knowledge_label(lang: PrimaryLanguage) -> &'static str {
+        match lang {
+            PrimaryLanguage::English => "AI Workspace Knowledge (.mql/knowledge.json)",
+            PrimaryLanguage::Khmer => "មូលដ្ឋានចំណេះដឹង AI (.mql/knowledge.json)",
+        }
+    }
+
+    pub fn vibe_label(lang: PrimaryLanguage) -> &'static str {
+        match lang {
+            PrimaryLanguage::English => "Vibe Check (Trading Context)",
+            PrimaryLanguage::Khmer => "បរិបទនៃការជួញដូរ (Vibe Check)",
+        }
+    }
+
     pub fn set_parameter_provenance(lang: PrimaryLanguage) -> &'static str {
         match lang {
             PrimaryLanguage::English => ".set parameter definition",
@@ -225,6 +248,20 @@ impl Catalog {
         match lang {
             PrimaryLanguage::English => "Type",
             PrimaryLanguage::Khmer => "ប្រភេទ",
+        }
+    }
+
+    pub fn vibe_explainer_heading(lang: PrimaryLanguage) -> &'static str {
+        match lang {
+            PrimaryLanguage::English => "MQL5 Vibe Explainer",
+            PrimaryLanguage::Khmer => "ការពន្យល់កូដ MQL5 (Vibe Explainer)",
+        }
+    }
+
+    pub fn trader_gotcha_label(lang: PrimaryLanguage) -> &'static str {
+        match lang {
+            PrimaryLanguage::English => "Trader Gotcha / Risk Tip",
+            PrimaryLanguage::Khmer => "ចំណុចគួរប្រយ័ត្នសម្រាប់ការជួញដូរ (Risk Tip)",
         }
     }
 
@@ -243,6 +280,10 @@ impl Catalog {
             (PrimaryLanguage::Khmer, "Constant") => "តម្លៃថេរ (Constant)",
             (PrimaryLanguage::Khmer, "Macro") => "ម៉ាក្រូ (Macro)",
             (PrimaryLanguage::Khmer, "Input") => "ធាតុបញ្ចូល (Input)",
+            (PrimaryLanguage::Khmer, "Condition") => "លក្ខខណ្ឌត្រួតពិនិត្យ (Condition Gate)",
+            (PrimaryLanguage::Khmer, "Loop") => "រង្វិលជុំ (Loop Iteration)",
+            (PrimaryLanguage::Khmer, "Return") => "សេចក្តីត្រឡប់តម្លៃ (Return Statement)",
+            (PrimaryLanguage::Khmer, "Statement") => "កន្សោមជួញដូរ (Trading Statement)",
             (PrimaryLanguage::Khmer, _) => "និមិត្តសញ្ញា (Symbol)",
             _ => match kind_name {
                 "Function" => "Function",
@@ -251,6 +292,10 @@ impl Catalog {
                 "Constant" => "Constant",
                 "Macro" => "Macro",
                 "Input" => "Input",
+                "Condition" => "Condition Gate",
+                "Loop" => "Loop Iteration",
+                "Return" => "Return Statement",
+                "Statement" => "Trading Statement",
                 _ => "Symbol",
             },
         }

@@ -7,6 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **AI / LLM Context-Aware Explainer & Statement Hover (Milestone H4):**
+  - **Context-Aware Statement & Condition Hover (`lsp/src/hover.rs`, `lsp/src/explainer.rs`):**
+    - Instant hover explanations for statements, condition gates (`if (...)`), reverse loops (`for (...)` / `while (...)`), initialization and return statements (`return INIT_SUCCEEDED;`, etc.), `struct`/`class` definitions, and trading expressions (`OrderSend`, `NormalizeDouble`, `CopyBuffer`, `CopyRates`, `SymbolInfoDouble`).
+    - Bilingual explanations in English and Khmer with trader gotchas and risk advisories (such as hedging vs. netting broker behavior, reverse iteration for trade closure, indicator handle allocation).
+  - **Heuristic Vibe Fallback:**
+    - Generates localized `💡 Vibe Check (Trading Context)` for custom domain symbols (e.g. `SymbolContext`, grid manager, trailing stop) even without prior workspace knowledge indexing.
+  - **Code Actions & Range Selection:**
+    - Added LSP `code_action_provider` support. Selecting or highlighting code offers quick actions:
+      - `🤖 Explain Selection (MQL Vibe Explainer)`
+      - `💡 Generate Workspace Knowledge for This File`
+  - **CLI & Auto-Sync Workspace Knowledge:**
+    - Added `mql-lsp explain "<snippet>"` CLI command and `scripts/explain-mql.sh` to extract trading semantics into `.mql/knowledge.json`, feeding hot-reloaded LSP hover popups.
+  - **Zed Keymap Shortcut:**
+    - Configured `alt-e` in `.zed/keymap.json` to trigger `MQL: Explain Selection (AI Vibe Explainer)` on selected text in Zed.
 - **Bilingual Smart Hover (English & Khmer):**
   - Added configurable bilingual smart hover documentation in `mql-lsp` with independent language toggles (`hover.languages.english`, `hover.languages.khmer`), primary language ordering (`hover.primaryLanguage`: `"en"` | `"km"`), facts-only mode (`hover.showDocumentation: false`), and a master disable switch (`hover.enabled`).
   - Implemented structured comment parsing supporting `// @en` and `// @km` doc tags with continuation lines, paragraph break preservation, and conservative script classification for untagged legacy comments to eliminate language leakage.
